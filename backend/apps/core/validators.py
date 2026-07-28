@@ -1,6 +1,6 @@
 # ==============================================================================
 #
-#                      CUSTOM VALIDATORS FOR CRYPTOBOT
+#                      CUSTOM VALIDATORS FOR THIS PROJECT
 #
 # This file contains custom validation classes used throughout the project to
 # enforce business logic and security rules. Each validator is designed to be a

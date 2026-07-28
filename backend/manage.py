@@ -5,8 +5,7 @@ import sys
 
 
 def main() -> None:
-    """Run administrative tasks.
-    """
+    """Run administrative tasks."""
     # Explicitly load .env file from the project root
     env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
     if os.path.exists(env_path):

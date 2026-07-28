@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200" width="1200" height="200" role="img" aria-labelledby="bannerTitle">
+  <title id="bannerTitle">Django Pro Template</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#0F2027"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0C4B33"/>
+      <stop offset="100%" stop-color="#44B78B"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="200" fill="url(#bg)"/>
+
+  <!-- subtle accent bar -->
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+  <rect x="0" y="194" width="1200" height="6" fill="url(#accent)"/>
+
+  <!-- simple shield motif: security-hardened backend -->
+  <g transform="translate(120, 58)">
+    <path d="M42 0 L84 16 V50 C84 76 65 92 42 100 C19 92 0 76 0 50 V16 Z"
+          fill="none" stroke="url(#accent)" stroke-width="4"/>
+    <path d="M23 47 L37 61 L63 33" fill="none" stroke="#44B78B" stroke-width="6"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="260" y="95" font-family="Helvetica, Arial, sans-serif" font-size="52"
+        font-weight="700" fill="#F5F7FA">Django Pro Template</text>
+  <text x="262" y="130" font-family="Helvetica, Arial, sans-serif" font-size="20"
+        font-weight="400" fill="#44B78B" letter-spacing="0.5">
+    A secure, production-ready Django backend foundation
+  </text>
+</svg>

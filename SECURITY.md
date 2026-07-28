@@ -2,20 +2,19 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+This is a template repository developed on a single active branch (`main`). Security fixes are applied there; there is no parallel maintenance of older versions.
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+Please report security vulnerabilities using [GitHub Security Advisories](https://github.com/GstMirabal/Django-Pro-Template/security/advisories/new) for this repository. This keeps the report private until a fix is available and gives you a dedicated, trackable thread with the maintainer.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Do not open a public issue for security reports.
+
+What to expect:
+- An initial response acknowledging the report.
+- Follow-up once the issue has been assessed, including whether it's accepted as a vulnerability and the expected timeline for a fix.
+- Credit in the eventual advisory, if you'd like it.
+
+## Scope
+
+This repository is a Django backend template, not a hosted service — reports should concern the template's own code and configuration (e.g. `backend/`, `config.toml.example`, `.env.example`, `docker-compose.yml`, CI workflows), not deployments built from it.

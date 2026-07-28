@@ -28,16 +28,35 @@ DJANGO_SECRET_KEY = "$DJANGO_SECRET_KEY"
 # --- Project base path. Optional, used to override the path in environments like Docker ---
 BASE_DIR = "$BASE_DIR"
 
-# --- Enables/disables debug mode. Must be 'True' for development and 'False' for production ---
+# --- Enables/disables debug mode. Only "true"/"false" are accepted
+# (case-insensitive); any other value makes the app refuse to start. ---
 DEBUG = "$DEBUG"
 
 # --- Comma-separated list of allowed domains for serving the application ---
-# Example in production: "api.cryptobot.com,www.cryptobot.com"
+# Example in production: "api.yourdomain.com,www.yourdomain.com"
 ALLOWED_HOSTS = "$ALLOWED_HOSTS"
 
 # --- Comma-separated list of allowed frontend origins to access the API ---
-# Example in production: "https://app.yourname.com"
+# Example in production: "https://app.yourdomain.com"
+# Also becomes CSRF_TRUSTED_ORIGINS and enables CORS_ALLOW_CREDENTIALS, so a
+# decoupled frontend at these origins can authenticate via session cookies.
 CORS_ALLOWED_ORIGINS = "$CORS_ALLOWED_ORIGINS"
+
+# --- Only set to "true" if this app sits behind a reverse proxy/load
+# balancer that terminates TLS AND is known to strip any client-supplied
+# `X-Forwarded-Proto` header. Enabling this blindly lets a client spoof the
+# header. Leave "false" unless you have verified this. ---
+TRUST_PROXY_SSL_HEADER = "$TRUST_PROXY_SSL_HEADER"
+
+# --- Locale/timezone for this deployment. Defaults are neutral (UTC) if left
+# blank; adjust to your own project instead of editing settings.py. ---
+LANGUAGE_CODE = "$LANGUAGE_CODE"
+TIME_ZONE = "$TIME_ZONE"
+
+# --- Only set to "true" if your frontend lives on a genuinely different
+# registrable domain than this API. Same-site cases (different port on
+# localhost, or a different subdomain of the same domain) do NOT need this. ---
+CROSS_SITE_FRONTEND = "$CROSS_SITE_FRONTEND"
 
 # ==============================================================================
 #                       DATABASE COMPONENTS
@@ -54,7 +73,8 @@ POSTGRES_DB = "$POSTGRES_DB"
 POSTGRES_USER = "$POSTGRES_USER"
 
 # --- Password for the database user. The actual value is a secret in .env ---
-# IMPORTANT: Special characters in the password must be URL-encoded in the .env file.
+# Special characters are fine as-is — settings.py URL-encodes this value
+# automatically before building the database connection URL.
 POSTGRES_PASSWORD = "$POSTGRES_PASSWORD"
 
 # --- Hostname or IP address of the database server ---

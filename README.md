@@ -1,17 +1,20 @@
 ﻿<div align="center">
 
+<!-- BANNER_START -->
+<img src="docs/assets/logo/django_pro_template_banner.svg" alt="Django Pro Template banner" width="100%">
+<!-- BANNER_END -->
+
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
+[![CI][ci-shield]][ci-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
 </div>
 
 <a name="readme-top"></a>
-
-<!-- jango Pro Template -->
 
 <h3 align="center">Django Pro Template</h3>
 
@@ -144,6 +147,13 @@ cd Django-Pro-Template
     
     ```
     
+    For local development (linting with `ruff`), also install the dev dependencies:
+    
+    ```
+    pip install -r requirements-dev.txt
+    
+    ```
+    
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -176,7 +186,10 @@ Before running the application, you need to set up your local environment secret
 
 3.  Complete your .env File:
 
-- Navigate to the root of the project and 				copy the content of the `.env.example` file 	located in the `src` folder and paste it into the new `.env` file.
+- Navigate to the root of the project and copy `.env.example` to a new file named `.env`:
+   ```bash
+   cp .env.example .env
+   ```
 
 - Paste the secret key you just generated into the DJANGO_SECRET_KEY variable. Also, fill in any other required values, such as POSTGRES_PASSWORD.
 
@@ -219,16 +232,33 @@ DJANGO_SECRET_KEY=
 # Leave blank for local development to let settings.py calculate it automatically.
 BASE_DIR=
 
-# DEBUG: Enables Django's debug mode. Should be "False" in production.
+# DEBUG: Enables Django's debug mode. Should be "false" in production.
+# Only "true"/"false" are accepted (case-insensitive) — any other value
+# makes the app refuse to start instead of silently guessing.
 DEBUG="True"
 
 # ALLOWED_HOSTS: Comma-separated list of hosts allowed for development.
-# In production, this should be your actual domain(s) (e.g., 'api.Django-Pro-Template.com').
+# In production, this should be your actual domain(s) (e.g., 'api.yourdomain.com').
 ALLOWED_HOSTS="localhost,127.0.0.1"
 
 # CORS_ALLOWED_ORIGINS: Comma-separated list of frontend origins allowed in development.
-# In production, this should be your frontend's domain (e.g., 'https://app.Django-Pro-Template.com').
+# In production, this should be your frontend's domain (e.g., 'https://app.yourdomain.com').
 CORS_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+
+# TRUST_PROXY_SSL_HEADER: Only set to "true" if this app sits behind a
+# reverse proxy/load balancer that terminates TLS AND is known to strip any
+# client-supplied `X-Forwarded-Proto` header. Leave "false" unless verified.
+TRUST_PROXY_SSL_HEADER="false"
+
+# LANGUAGE_CODE / TIME_ZONE: adjust to your own project. Defaults are
+# deliberately neutral (UTC) rather than tied to any specific region.
+LANGUAGE_CODE="en-us"
+TIME_ZONE="UTC"
+
+# CROSS_SITE_FRONTEND: Only set to "true" if your frontend lives on a
+# genuinely different registrable domain than this API. Same-site cases
+# (different port on localhost, different subdomain) do NOT need this.
+CROSS_SITE_FRONTEND="false"
 
 
 # ==============================================================================
@@ -238,14 +268,14 @@ CORS_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
 # Django (via config.toml) to CONNECT to it.
 
 # Choose a name for your local development database.
-POSTGRES_DB="your_db_name"
+POSTGRES_DB=your_db_name
 
 # Choose a username for your local database.
-POSTGRES_USER="your_db_user"
+POSTGRES_USER=your_db_user
 
 # Choose a secure password for your local database. This is a secret.
-# IMPORTANT: If your password contains special characters like !, @, #, etc.,
-# they MUST be URL-encoded (e.g., '!' becomes '%21').
+# Special characters (!, @, #, etc.) are fine as-is — settings.py URL-encodes
+# this value automatically before building the database connection URL.
 POSTGRES_PASSWORD=
 
 # Host where the database is running (for local Docker, this is always 'localhost').
@@ -286,11 +316,17 @@ This section explains the required environment variables for the Django-Pro-Temp
 
 -   `DJANGO_SECRET_KEY`: The cryptographic signing key. **Must be kept secret and unique for production.**
     
--   `DEBUG`: Toggles debug mode. **Must be `False` in production.**
+-   `DEBUG`: Toggles debug mode. **Must be `"false"` in production.** Only `"true"`/`"false"` (case-insensitive) are accepted — any other value makes the app refuse to start rather than silently guessing.
     
 -   `ALLOWED_HOSTS`: A comma-separated list of allowed hostnames.
     
--   `CORS_ALLOWED_ORIGINS`: A comma-separated list of permitted frontend origins for API requests.
+-   `CORS_ALLOWED_ORIGINS`: A comma-separated list of permitted frontend origins for API requests. Also becomes `CSRF_TRUSTED_ORIGINS` and enables `CORS_ALLOW_CREDENTIALS`, so a decoupled frontend at these origins can authenticate via session cookies.
+    
+-   `TRUST_PROXY_SSL_HEADER`: Only set to `"true"` if this app sits behind a reverse proxy/load balancer that terminates TLS and is known to strip any client-supplied `X-Forwarded-Proto` header. Leave `"false"` unless verified — enabling it blindly lets a client spoof the header.
+    
+-   `LANGUAGE_CODE` / `TIME_ZONE`: Locale/timezone for this deployment. Defaults are neutral (`en-us`/`UTC`) rather than tied to any specific region.
+    
+-   `CROSS_SITE_FRONTEND`: Only set to `"true"` if your frontend lives on a genuinely different registrable domain than this API (e.g. a SPA on `myapp.example` calling an API on `api.otherdomain.com`). Same-site cases (different port on `localhost`, or a different subdomain of the same domain) do not need this.
     
 #### PostgreSQL Database Settings
 
@@ -356,11 +392,26 @@ This will load the environment variables from your `.env` file into your shell s
 
 ### 3. TOML Configuration
 
-The central configuration for the Django application is located at `backend/config.toml`. This file acts as a template, mapping variables from the `.env` file to the required settings.
+The central configuration for the Django application is located at the **project root** (`config.toml`, not inside `backend/`). It doesn't exist yet on a fresh clone — create it from the example template:
+
+```bash
+cp config.toml.example config.toml
+```
+
+This file acts as a template, mapping variables from the `.env` file to the required settings via the `$VARIABLE_NAME` syntax. The application will fail to start (`ImproperlyConfigured`) if `config.toml` is missing.
 
 The following parameters are configured by default to start the project in a local development environment:
 
 ```
+# ==============================================================================
+#                      PROJECT METADATA
+# ==============================================================================
+[project]
+name = "{$PROJECT_NAME}"
+version = "1.0.0"
+description = "A production-ready Django project template with a professional, secure, and scalable architecture."
+author = "Gustavo Mirabal"
+
 # ==============================================================================
 #                       DJANGO SETTINGS
 # ==============================================================================
@@ -373,16 +424,33 @@ DJANGO_SECRET_KEY = "$DJANGO_SECRET_KEY"
 # --- Project base path. Optional, used to override the path in environments like Docker ---
 BASE_DIR = "$BASE_DIR"
 
-# --- Enables/disables debug mode. Must be 'True' for development and 'False' for production ---
+# --- Enables/disables debug mode. Only "true"/"false" are accepted
+# (case-insensitive); any other value makes the app refuse to start. ---
 DEBUG = "$DEBUG"
 
 # --- Comma-separated list of allowed domains for serving the application ---
-# Example in production: "api.Django-Pro-Template.com,www.Django-Pro-Template.com"
+# Example in production: "api.yourdomain.com,www.yourdomain.com"
 ALLOWED_HOSTS = "$ALLOWED_HOSTS"
 
 # --- Comma-separated list of allowed frontend origins to access the API ---
-# Example in production: "https://app.yourname.com"
+# Example in production: "https://app.yourdomain.com"
+# Also becomes CSRF_TRUSTED_ORIGINS and enables CORS_ALLOW_CREDENTIALS, so a
+# decoupled frontend at these origins can authenticate via session cookies.
 CORS_ALLOWED_ORIGINS = "$CORS_ALLOWED_ORIGINS"
+
+# --- Only set to "true" if this app sits behind a reverse proxy/load
+# balancer that terminates TLS AND is known to strip any client-supplied
+# `X-Forwarded-Proto` header. Leave "false" unless you have verified this. ---
+TRUST_PROXY_SSL_HEADER = "$TRUST_PROXY_SSL_HEADER"
+
+# --- Locale/timezone for this deployment. Defaults are neutral (UTC) if left
+# blank; adjust to your own project instead of editing settings.py. ---
+LANGUAGE_CODE = "$LANGUAGE_CODE"
+TIME_ZONE = "$TIME_ZONE"
+
+# --- Only set to "true" if your frontend lives on a genuinely different
+# registrable domain than this API. Same-site cases do NOT need this. ---
+CROSS_SITE_FRONTEND = "$CROSS_SITE_FRONTEND"
 
 # ==============================================================================
 #                       DATABASE COMPONENTS
@@ -399,7 +467,8 @@ POSTGRES_DB = "$POSTGRES_DB"
 POSTGRES_USER = "$POSTGRES_USER"
 
 # --- Password for the database user. The actual value is a secret in .env ---
-# IMPORTANT: Special characters in the password must be URL-encoded in the .env file.
+# Special characters are fine as-is — settings.py URL-encodes this value
+# automatically before building the database connection URL.
 POSTGRES_PASSWORD = "$POSTGRES_PASSWORD"
 
 # --- Hostname or IP address of the database server ---
@@ -425,31 +494,31 @@ POSTGRES_PORT = "$POSTGRES_PORT"
 
 To set up the database and apply the initial application schema, follow the detailed steps below. This process uses Docker to run the PostgreSQL database and Django commands to create the necessary tables.
 
-1. Start the Docker Desktop ApplicationBefore running any commands, ensure that the Docker Desktop application is open and running on your system. You should see the Docker whale icon in your system's menu bar or tray with a green indicator, which signifies that the Docker daemon is active and ready.
+1. Start the Docker Desktop Application. Before running any commands, ensure that the Docker Desktop application is open and running on your system. You should see the Docker whale icon in your system's menu bar or tray with a green indicator, which signifies that the Docker daemon is active and ready.
 
-2. Launch the Database ContainerFrom the project's root directory (where the docker-compose.yml file is located), run the following command in your terminal:
+2. Launch the Database Container. From the project's root directory (where the docker-compose.yml file is located), run the following command in your terminal:
 
 ```
-docker-compose up -d
-````
+docker-compose up -d db
+```
 
 - What this command does: Docker Compose reads the docker-compose.yml and .env files. On its first run, it downloads the official PostgreSQL image, creates a container, and automatically initializes the database (POSTGRES_DB), user (POSTGRES_USER), and password (POSTGRES_PASSWORD) that you defined in your .env file. The -d flag runs the container in the background (detached mode).
 
-Suggestion 1: Add a verification step. This gives the user immediate feedback that the container is running correctly before they proceed.
+- `docker-compose.yml` also defines a `backend` service (this Django app, built from the repo's `Dockerfile`) — running `db` on its own here, by name, keeps this local setup exactly as before (Django runs outside Docker via `venv` for faster iteration). To run everything containerized instead (`docker-compose up -d`, no arguments, starts both services), see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-2.1. Verify the Container is Running (Optional)To confirm that the database container has started successfully,
+2.1. Verify the Container is Running (Optional). To confirm that the database container has started successfully:
 
 ```
- docker ps
+docker ps
 ```
 
 You should see a container named Django-Pro-Template_db (or the name you configured) in the list with the status Up.
 
-3. Apply Database MigrationsOnce the database container is running, the next step is to create the internal table structure (the schema) that the Django application requires.Navigate to the backend directory:
+3. Apply Database Migrations. Once the database container is running, the next step is to create the internal table structure (the schema) that the Django application requires. Navigate to the backend directory:
 
 ```
 cd backend
-````
+```
 
 > **CRITICAL WARNING: Custom User Model**
 >
@@ -471,15 +540,11 @@ python manage.py makemigrations
 
 # This command applies the migrations to create the tables in the database
 python manage.py migrate
-
-````
-
-Suggestion 2: Clarify the expected output. This helps the user confirm that the migrations were applied successfully.
+```
 
 - Expected Output: After running migrate, you will see a list of all migrations being applied, with an OK next to each one. This confirms that the tables have been created in your PostgreSQL database.
 
-- Suggestion 3: Add the logical next step. After creating the tables, the user will almost always need a superuser to access the Django admin.
-
+With the tables in place, the next step is to create a superuser to access the Django admin.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -493,9 +558,7 @@ To access the admin interface, you need to create a superuser account. Follow th
    ```
 3. Follow the prompts to enter your desired username, email, and password.
 
-This section now includes instructions on how to create a superuser for accessing the admin interface, improving the overall completeness of the documentation.
-
-Once created, you can log in to the admin interface at [http://0.0.0.0:8000/admin](http://0.0.0.0:8000/admin) using the superuser credentials.
+Once created, you can log in to the admin interface at [http://0.0.0.0:8000/admin](http://0.0.0.0:8000/admin) using the superuser credentials. `/admin/login/` is protected against brute-force attempts by `django-axes`: after 5 failed attempts, the (username, IP) pair is locked out for an hour.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -533,9 +596,10 @@ Once the server is running, you have successfully completed the most critical ph
 The project is now in a state of a professional "blank canvas". You have at your disposal:
 
 -   A running development server connected to a **PostgreSQL** database.
--   A **secure and production-ready configuration** (`settings.py`) that handles secrets, security headers, and logging.
+-   A **secure and production-ready configuration** (`settings.py`) that handles secrets, security headers, brute-force login protection (`django-axes`), and logging.
 -   A **modular application structure** (`apps/`) ready to house your business logic.
 -   A **complete testing framework** ready to verify your code.
+-   **CI on every push/PR** (`.github/workflows/ci.yml`): lint (`ruff`), tests, and a `manage.py check --deploy` run that boots the app with `DEBUG=false` to catch production-config regressions before they reach a real deployment.
 
 From this point on, you have a solid foundation to start building the application's core logic. This includes, but is not limited to:
 
@@ -554,6 +618,8 @@ The foundation is complete. It's time to start building.
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement". Don't forget to give the project a star! Thanks again!
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (local setup, checks to run before opening a PR, commit conventions). This project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -596,6 +662,8 @@ Project Link: [https://github.com/GstMirabal/Django-Pro-Template](https://github
 [issues-url]: https://github.com/GstMirabal/Django-Pro-Template/issues
 [license-shield]: https://img.shields.io/github/license/GstMirabal/Django-Pro-Template.svg?style=for-the-badge
 [license-url]: https://github.com/GstMirabal/Django-Pro-Template/blob/master/LICENSE.txt
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/GstMirabal/Django-Pro-Template/ci.yml?branch=main&style=for-the-badge&label=CI
+[ci-url]: https://github.com/GstMirabal/Django-Pro-Template/actions/workflows/ci.yml
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/gstmirabal
 [Python.png]: https://www.python.org/static/community_logos/python-powered-w-100x40.png

@@ -1,15 +1,52 @@
 services:
   db:
-    image: postgres:15
-    container_name: "${PROJECT_NAME}"
+    image: postgres:15.10
+    container_name: "${PROJECT_NAME}_db"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Fully containerized Django, built from the repo's own Dockerfile. Not
+  # needed for local development (the documented flow runs Django outside
+  # Docker via `venv` against just the `db` service — `docker-compose up -d db`
+  # keeps working exactly as before). This service is for running/testing the
+  # production image locally. See docs/DEPLOYMENT.md.
+  backend:
+    build: .
+    container_name: "${PROJECT_NAME}_backend"
+    env_file:
+      - .env
+    environment:
+      # Overrides .env's POSTGRES_HOST=localhost: inside this network, the
+      # database is reachable by its Compose service name, not "localhost".
+      POSTGRES_HOST: db
+      # Always 5432 — Postgres's actual listening port *inside* the db
+      # container, regardless of what host port .env's POSTGRES_PORT maps to
+      # externally (e.g. if it was changed to avoid a host port conflict).
+      POSTGRES_PORT: "5432"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000), timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
 
 volumes:
   postgres_data:

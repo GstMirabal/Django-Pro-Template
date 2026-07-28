@@ -1,0 +1,36 @@
+# Version control / CI / AI tooling — not needed at runtime.
+.git/
+.github/
+.agents/
+.claude/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+
+# Docs — not needed at runtime, keeps the build context and image lean.
+docs/
+README.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+CHANGELOG.md
+
+# Secrets and host-local files — must never be baked into the image.
+.env
+config.toml
+identity.config.json
+.mcp.json
+.agent_state/
+
+# Generated at runtime inside the container, not needed from the build context.
+backend/logs/
+backend/mediafiles/
+backend/staticfiles/
+
+# OS / editor
+.DS_Store
+.vscode/

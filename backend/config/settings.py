@@ -24,6 +24,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 # --- Required imports at the top of the file ---
 from pathlib import Path
 from typing import Any, override
+from urllib.parse import quote
 import envtoml
 import logging
 from datetime import datetime, UTC
@@ -51,6 +52,40 @@ except FileNotFoundError as e:
     ) from e
 
 
+def _parse_strict_bool(value: Any, key: str) -> bool:  # noqa: ANN401
+    """Parse a config value into a real boolean, failing loudly on anything else.
+
+    `envtoml`/`toml` only cast a string to a TOML boolean when it is exactly
+    `true` or `false` in lowercase (TOML spec). Any other casing (e.g. `"True"`,
+    `"False"`) falls back to a non-empty string, which is truthy in Python
+    regardless of its content — silently defeating `if not DEBUG:` checks.
+    This helper accepts `true`/`false` case-insensitively and refuses to guess
+    for anything else.
+
+    Args:
+        value (Any): The raw value read from `config.toml` (bool or str).
+        key (str): The config key name, used only for the error message.
+
+    Returns:
+        bool: The parsed boolean value.
+
+    Raises:
+        ImproperlyConfigured: If `value` is not a recognizable boolean.
+    """
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized == 'true':
+        return True
+    if normalized == 'false':
+        return False
+    raise ImproperlyConfigured(
+        f'CRITICAL: `{key}` must be "true" or "false" (case-insensitive), '
+        f'got {value!r}. Refusing to guess a default for a security-relevant '
+        'setting.'
+    )
+
+
 # ==============================================================================
 # SECTION 2: CORE SECURITY SETTINGS
 # ==============================================================================
@@ -72,9 +107,11 @@ except (KeyError, ValueError) as e:
 
 # --- 2.2 DEBUG MODE (DEBUG) ---
 # SECURITY WARNING: Never run with debug turned on in production!
+# Accepted values: "true" / "false" (case-insensitive). Anything else raises
+# ImproperlyConfigured instead of silently defaulting to a truthy string.
 # Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#debug
 # ------------------------------------------------------------------------------
-DEBUG = config['django_settings'].get('DEBUG')
+DEBUG = _parse_strict_bool(config['django_settings'].get('DEBUG'), 'DEBUG')
 
 
 # --- 2.3 ALLOWED HOSTS (ALLOWED_HOSTS) ---
@@ -126,6 +163,52 @@ if not DEBUG and not CORS_ALLOWED_ORIGINS:
         '`[django_settings]` section of `config.toml`.'
     ) from None
 
+# --- 2.5 CSRF-TRUSTED ORIGINS AND CROSS-ORIGIN CREDENTIALS ---
+# A decoupled frontend (the whole point of CORS_ALLOWED_ORIGINS above) needs
+# both of these to actually authenticate via session cookies across origins:
+# CSRF_TRUSTED_ORIGINS so session-authenticated POSTs aren't rejected with a
+# 403, and CORS_ALLOW_CREDENTIALS so the browser sends/accepts the session
+# cookie cross-origin in the first place. Neither is implied by CORS alone.
+# Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#csrf-trusted-origins
+# ------------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+CORS_ALLOW_CREDENTIALS = True
+
+
+# --- 2.6 TRUST PROXY SSL HEADER (SECURE_PROXY_SSL_HEADER) ---
+# Opt-in only: only enable this if this app sits behind a reverse proxy/load
+# balancer that terminates TLS AND is known to strip/overwrite any incoming
+# `X-Forwarded-Proto` header from clients. Enabling this blindly without that
+# guarantee lets a client spoof the header and trick Django into treating a
+# plain HTTP request as secure.
+# Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#secure-proxy-ssl-header
+# ------------------------------------------------------------------------------
+if _parse_strict_bool(
+    config['django_settings'].get('TRUST_PROXY_SSL_HEADER', 'false'),
+    'TRUST_PROXY_SSL_HEADER',
+):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+# --- 2.7 CROSS-SITE FRONTEND COOKIES (SAMESITE) ---
+# Opt-in only. CORS_ALLOW_CREDENTIALS above is necessary but not sufficient
+# for a frontend on a genuinely different registrable domain (e.g. a SPA on
+# `myapp.example` calling an API on `api.otherdomain.com`): browsers never
+# send a `SameSite=Lax` (Django's default) cookie on a cross-*site* fetch/XHR,
+# only on top-level navigations. Same-site-but-cross-origin cases (different
+# port, e.g. localhost:3000 -> localhost:8000, or different subdomain of the
+# same domain) already work with the default and do NOT need this. Forcing
+# `SameSite=None` unconditionally would weaken CSRF-adjacent protection for
+# the common same-site case, so this stays opt-in.
+# Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#session-cookie-samesite
+# ------------------------------------------------------------------------------
+if _parse_strict_bool(
+    config['django_settings'].get('CROSS_SITE_FRONTEND', 'false'),
+    'CROSS_SITE_FRONTEND',
+):
+    SESSION_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'None'
+
 
 # ==============================================================================
 # SECTION 3: PRODUCTION-ONLY SECURITY ENHANCEMENTS
@@ -140,13 +223,22 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    CSP_DEFAULT_SRC = ("'self'", )
+    # django-csp >= 4.0 reads this single dict, not the old CSP_* settings
+    # (django-csp 3.x format). Using the old format here would make django-csp
+    # register a system check `Error` (csp.E001) the moment this block runs,
+    # which blocks the app from starting at all.
+    CONTENT_SECURITY_POLICY = {
+        'DIRECTIVES': {'default-src': ["'self'"]},
+    }
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
     SECURE_REFERRER_POLICY = 'no-referrer'
-    SECURE_PERMISSIONS_POLICY = {
-        'geolocation': '()', 'microphone': '()', 'camera': '()',
-        'fullscreen': '()', 'payment': '()',
+    # django-permissions-policy reads this dict — values are lists of allowed
+    # origins per feature (empty list = denied for everyone), NOT raw
+    # Permissions-Policy header syntax like "()"/"(self)".
+    PERMISSIONS_POLICY = {
+        'geolocation': [], 'microphone': [], 'camera': [],
+        'fullscreen': [], 'payment': [],
     }
 
 
@@ -164,10 +256,36 @@ INSTALLED_APPS = [
     # Third-Party Apps
     'corsheaders',
     'csp',
+    'axes',
 
     # Local Project Apps
     'apps.core',
 ]
+
+# -- 4.1: Authentication Backends --
+# `AxesStandaloneBackend` must be listed first: it intercepts login attempts
+# to enforce lockouts before Django's own backend authenticates the user.
+# Documentation: https://django-axes.readthedocs.io/en/latest/4_configuration.html
+# ------------------------------------------------------------------------------
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# -- 4.2: Brute-Force Login Protection (django-axes) --
+# Locks out an IP/username combination after repeated failed login attempts,
+# covering /admin/ and any future auth views alike.
+# ------------------------------------------------------------------------------
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # hour
+# Lock out by the (username, IP) combination, not IP alone (the library's
+# default): pure IP-based lockout means one attacker on a shared/NAT IP
+# (office network, campus Wi-Fi) locks out every legitimate user behind it.
+AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]
+# Without this, failed-attempt counts persist across successful logins for
+# the full AXES_COOLOFF_TIME — a handful of typos spread across otherwise
+# successful sessions could eventually trip the lockout.
+AXES_RESET_ON_SUCCESS = True
 
 
 # ==============================================================================
@@ -180,6 +298,11 @@ INSTALLED_APPS = [
 # ------------------------------------------------------------------------------
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Must be directly after SecurityMiddleware per whitenoise's own docs.
+    # Serves collected static files without needing a separate proxy/CDN —
+    # safe and common to leave active in development too.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django_permissions_policy.PermissionsPolicyMiddleware',
     'csp.middleware.CSPMiddleware',  # Recommended to be placed high in the stack
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -188,6 +311,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'axes.middleware.AxesMiddleware',  # Must be last in the stack.
 ]
 
 # -- 5.2: Root URL Configuration --
@@ -233,7 +357,11 @@ try:
         raise ValueError(
             "One or more required database components are missing.")
 
-    database_url = f"postgres://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    # URL-encode user/password: a raw special character (e.g. '@', ':', '/')
+    # in either would otherwise corrupt the connection URL's structure.
+    encoded_user = quote(str(db_user), safe='')
+    encoded_password = quote(str(db_password), safe='')
+    database_url = f"postgres://{encoded_user}:{encoded_password}@{db_host}:{db_port}/{db_name}"
 
     DATABASES = {
         'default': dj_database_url.config(
@@ -307,10 +435,16 @@ PASSWORD_HASHERS = [
 #AUTH_USER_MODEL = 'users.User'
 
 # -- 8.2: Internationalization (i18n) --
+# Configurable per deployment: unlike most of this file, these two used to be
+# hardcoded, which forced every fork of this template to edit source code
+# just to change locale/timezone. Defaults are deliberately neutral.
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 # ------------------------------------------------------------------------------
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Europe/Madrid'
+# `or` (not `.get(key, default)`) is required here: envtoml substitutes an
+# unset env var with an empty string rather than omitting the key, so a
+# present-but-empty value must fall back to the default too.
+LANGUAGE_CODE = config['django_settings'].get('LANGUAGE_CODE') or 'en-us'
+TIME_ZONE = config['django_settings'].get('TIME_ZONE') or 'UTC'
 USE_I18N = True
 USE_TZ = True  # Saves datetimes in UTC in the DB.
 
@@ -321,6 +455,31 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'mediafiles'
+
+# `STORAGES` (Django 4.2+) replaces the old `STATICFILES_STORAGE` setting.
+# The manifest variant (hashed filenames, far-future cache headers) requires
+# `collectstatic` to have already run — it raises ValueError on any
+# {% static %} reference otherwise (including from the Django admin's own
+# templates), which would break `manage.py test`/`runserver` in DEBUG without
+# a `collectstatic` step nobody expects to need for local dev. Only use it
+# once `docker-entrypoint.sh` has actually run `collectstatic` in production.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {
+        'BACKEND': (
+            'whitenoise.storage.CompressedManifestStaticFilesStorage'
+            if not DEBUG
+            else 'whitenoise.storage.CompressedStaticFilesStorage'
+        )
+    },
+}
+
+if DEBUG:
+    # Serve static files straight from each app's `static/` source directory
+    # (same mechanism `runserver` already uses) instead of requiring
+    # `collectstatic` in development too.
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_AUTOREFRESH = True
 
 
 # ==============================================================================
@@ -337,7 +496,9 @@ else:
         email_config = config['email_settings']
         EMAIL_HOST = email_config['EMAIL_HOST']
         EMAIL_PORT = email_config['EMAIL_PORT']
-        EMAIL_USE_TLS = email_config['EMAIL_USE_TLS']
+        EMAIL_USE_TLS = _parse_strict_bool(
+            email_config['EMAIL_USE_TLS'], 'EMAIL_USE_TLS'
+        )
         EMAIL_HOST_USER = email_config['EMAIL_HOST_USER']
         EMAIL_HOST_PASSWORD = email_config['EMAIL_HOST_PASSWORD']
 
