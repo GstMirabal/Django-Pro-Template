@@ -95,3 +95,7 @@ settings.json
 # Ruff's own cache directory (it self-manages via a nested .gitignore, this is
 # a defensive belt-and-suspenders entry at the root).
 .ruff_cache/
+
+# .agents telemetry — strictly ephemeral by its own governance rule
+# (agents.md §4 ephemeral_memory), never committed.
+/memory/
