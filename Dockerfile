@@ -4,7 +4,7 @@
 # BUILDER — installs dependencies into an isolated venv. Toolchain (compiler
 # headers for argon2-cffi-bindings/cffi) never reaches the final image.
 # ==============================================================================
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn==26.0.0 whitenoise==
 # ==============================================================================
 # FINAL — minimal runtime image, non-root user.
 # ==============================================================================
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
