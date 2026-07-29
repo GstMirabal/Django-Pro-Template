@@ -10,7 +10,7 @@ django-axes==8.3.1
 django-cors-headers==4.9.0
 django-csp==4.0
 django-permissions-policy==4.32.0
-envtoml==0.1.2
+envtoml==0.4.0
 gunicorn==26.0.0
 h11==0.16.0
 httpcore==1.0.9
