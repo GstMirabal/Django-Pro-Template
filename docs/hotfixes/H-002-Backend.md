@@ -16,7 +16,7 @@ Dependabot PR #6 (`envtoml` 0.1.2 → 0.4.0) failed both `lint-and-test` and `de
 | :--- | :--- |
 | `backend/config/settings.py` | `config_path.open('r', encoding='utf-8')` → `config_path.open('rb')` (binary mode, no explicit encoding — `envtoml` 0.4.0 decodes internally). |
 
-Branch/commit: `dependabot/pip/envtoml-0.4.0` (Dependabot PR #6) → *(pending push)*
+Branch/commit: `dependabot/pip/envtoml-0.4.0` (Dependabot PR #6) → `d796bdf`
 
 ## 4. Verification
 - Installed `envtoml==0.4.0` in the local venv (matching the version this Dependabot PR bumps to).
