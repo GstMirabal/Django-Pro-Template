@@ -15,7 +15,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn==26.0.0 whitenoise==6.12.0
+RUN pip install --no-cache-dir -r requirements.txt gunicorn==26.0.0 whitenoise==6.12.0 \
+    # Bytecode caches generated during install and pip itself are pure
+    # build-time weight: Python recompiles what it needs at runtime, and
+    # this image never runs `pip install` again after this stage.
+    && find /opt/venv -type d -name '__pycache__' -exec rm -rf {} + \
+    && rm -rf /opt/venv/lib/python3.13/site-packages/pip \
+              /opt/venv/lib/python3.13/site-packages/pip-*.dist-info \
+              /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.13
 
 # ==============================================================================
 # FINAL — minimal runtime image, non-root user.
@@ -27,6 +34,13 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
 RUN groupadd -r django && useradd -r -g django -d /app django
+
+# The base image ships its own system-level pip; this app only ever runs
+# from /opt/venv (below), so nothing at runtime needs a package installer
+# present — one less thing on disk and in the attack surface.
+RUN rm -rf /usr/local/lib/python3.13/site-packages/pip \
+           /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 COPY --from=builder /opt/venv /opt/venv
 
