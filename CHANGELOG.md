@@ -37,6 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - 49 known CVEs across pinned dependencies (`pip-audit`): `Django` 5.2.7 → 5.2.16, `idna` 3.11 → 3.18, `sqlparse` 0.5.3 → 0.5.5. #000
 - `docker-compose.yml`'s `db` service: unpinned `postgres:15` → pinned `postgres:15.10`, Postgres port published to all interfaces → `127.0.0.1` only, no healthcheck/restart policy → both added. #000
 - `.gitignore` missing entries that left `identity.config.json`, `.mcp.json`, and `.agent_state/` untracked but not ignored (a careless `git add -A` would have committed them — `identity.config.json` in particular is meant to hold real contact info). #000
+- CI (`lint-and-test` and `deploy-check`) failing on every push: the `CROSS_SITE_FRONTEND` opt-in strict-bool setting was never added to `ci.yml`'s env blocks when introduced, so it resolved to an empty string and `_parse_strict_bool` refused to boot Django. See `docs/hotfixes/H-001-CI.md`. #H-001-CI
 
 ## [0.1.0] - 2026-07-27
 _Seed entry: state of the project at governance adoption (Scenario C — mature project, no agents)._
