@@ -504,7 +504,7 @@ docker-compose up -d db
 
 - What this command does: Docker Compose reads the docker-compose.yml and .env files. On its first run, it downloads the official PostgreSQL image, creates a container, and automatically initializes the database (POSTGRES_DB), user (POSTGRES_USER), and password (POSTGRES_PASSWORD) that you defined in your .env file. The -d flag runs the container in the background (detached mode).
 
-- `docker-compose.yml` also defines a `backend` service (this Django app, built from the repo's `Dockerfile`) — running `db` on its own here, by name, keeps this local setup exactly as before (Django runs outside Docker via `venv` for faster iteration). To run everything containerized instead (`docker-compose up -d`, no arguments, starts both services), see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- `docker-compose.yml` also defines a `backend` service (this Django app, built from the repo's `Dockerfile`) — running `db` on its own here, by name, keeps this local setup exactly as before (Django runs outside Docker via `venv` for faster iteration). To run everything containerized instead (`docker-compose up -d`, no arguments, starts both services), see [docs/guides/CORE_DEPLOYMENT_GUIDE.md](docs/guides/CORE_DEPLOYMENT_GUIDE.md).
 
 2.1. Verify the Container is Running (Optional). To confirm that the database container has started successfully:
 

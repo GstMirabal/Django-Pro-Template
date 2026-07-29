@@ -1,7 +1,7 @@
 # 🧭 System Overview: Django Pro Template
 **Last Audit Sprint**: #000 (Security Hardening + Containerized Deploy — Rounds 1-4)
-**Last Audit Date**: 2026-07-28
-**Last Audit Commit SHA**: f5ea84d365697d67dda090cae53d935e68eb3b29
+**Last Audit Date**: 2026-07-29
+**Last Audit Commit SHA**: 417667891e1b69bc971ac0b04ea1124c53e1f1a4
 
 This is the **Documentation Entry Point**. `agents.md §0 (Entry Point)` requires every session to read this file before anything else. It is intentionally short — for the full component inventory, see `.agents/docs/architecture/topology_map.md`.
 
@@ -39,7 +39,7 @@ Dockerfile          Multi-stage production image (non-root, gunicorn,
                     docker-entrypoint.sh runs migrate+collectstatic on start).
                     Optional `backend` service in docker-compose.yml builds
                     from it; local dev still runs Django outside Docker via
-                    `venv` against just the `db` service. See docs/DEPLOYMENT.md.
+                    `venv` against just the `db` service. See docs/guides/CORE_DEPLOYMENT_GUIDE.md.
 PostgreSQL          External datastore, configured via dj_database_url from config.toml/.env.
 CI (GitHub Actions) Lint + tests + a manage.py check --deploy run booted with
                     DEBUG=false, on every push/PR — .github/workflows/ci.yml.

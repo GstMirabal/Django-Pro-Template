@@ -1,0 +1,15 @@
+{
+  "last_update": "2026-07-29",
+  "sprint_id": "000",
+  "_schema": "Entries are summary-only Knowledge Items. The 'file' field is omitted once the raw log has been purged (agents.md §4 definitive_amnesia) — the 1-line summary IS the retained knowledge.",
+  "items": [
+    {
+      "id": "F-20260729-SV01",
+      "summary": "The .agents pre-commit hook's audit_secret_shielding() flags the bare substring 'PASSWORD =' (and SECRET =/API_KEY =/PRIVATE_KEY) case-insensitively with no context — it false-positives on ordinary variable names (db_password =, POSTGRES_PASSWORD = \"$POSTGRES_PASSWORD\") in any Django settings.py or $VAR-templated example config, not just real leaked secrets. This is framework-class (affects every host with normal Django/config code), not host-specific — a nucleus fix proposal was flagged to the human but not yet drafted/submitted upstream."
+    },
+    {
+      "id": "F-20260729-BV01",
+      "summary": "This host's sessions ran directly on main (no ai-sprint/[ID] branch, no formal Sprint ever opened) — every git push origin main attempt via Claude Code's own Bash tool is blocked by the on_commit.py PreToolUse hook (RA-12), regardless of git flags like --no-verify, because it intercepts at the Claude Code tool-call layer, not git's. The fix is never to retry the push in-session — hand the exact command to the human to run in their own terminal, then verify with git fetch afterward."
+    }
+  ]
+}

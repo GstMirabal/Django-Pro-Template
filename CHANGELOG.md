@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 ## [Unreleased]
 
 ### Added
+- Session closeout (`/agents:close`): renamed `docs/DEPLOYMENT.md` to `docs/guides/CORE_DEPLOYMENT_GUIDE.md` (RA-06 Option B naming — how-to guides live at `docs/guides/[MODULE]_[TASK]_GUIDE.md`) and restructured it to the How-to template (Goal/Prerequisites/Steps/Verify/Troubleshooting); updated every cross-reference. Purged 3 empty scaffold directories (`docs/contracts/`, `docs/roadmaps/backend/core/`, `docs/sprints/backend/core/`) per RA-07. #000
 - Adopted Token-Optimized Agent Pipeline governance (v4.2.1) — onboarding scenario: C (mature project, no prior agentic traces). #000
 - CI (`.github/workflows/ci.yml`): lint, tests, and a `manage.py check --deploy` run booted with a simulated `DEBUG=false` on every push/PR. #000
 - `django-axes` brute-force login protection, tuned to lock out `(username, ip_address)` pairs (not IP alone) and reset the failure count on a successful login. #000
@@ -19,7 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - A functional test suite for the above: `django-axes` lockout exercised via the real login flow, and CSP/Permissions-Policy header regression tests. #000
 - A banner (`docs/assets/logo/django_pro_template_banner.svg`) and CI status badge on the README. #000
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/config.yml`, `.editorconfig`, `.python-version`. Adapted the bug-report issue template (was asking about "Browser"/"Smartphone" fields, irrelevant to a backend project). #000
-- `Dockerfile` (multi-stage, non-root, own `HEALTHCHECK`) and `docker-entrypoint.sh` (`migrate` + `collectstatic` on every start) for a generic, production-ready container image. `whitenoise` for static file serving. Optional `backend` service in `docker-compose.yml`; the documented local-dev flow (`docker-compose up -d db` + Django via `venv`) is unchanged. `docker` ecosystem added to Dependabot. `docs/DEPLOYMENT.md` — deploy guidance (Docker Compose, VPS, Railway/Render/Fly.io, Kubernetes) without committing to one platform's exact config. #000
+- `Dockerfile` (multi-stage, non-root, own `HEALTHCHECK`) and `docker-entrypoint.sh` (`migrate` + `collectstatic` on every start) for a generic, production-ready container image. `whitenoise` for static file serving. Optional `backend` service in `docker-compose.yml`; the documented local-dev flow (`docker-compose up -d db` + Django via `venv`) is unchanged. `docker` ecosystem added to Dependabot. `docs/guides/CORE_DEPLOYMENT_GUIDE.md` — deploy guidance (Docker Compose, VPS, Railway/Render/Fly.io, Kubernetes) without committing to one platform's exact config. #000
 - Trimmed the production image: drop `__pycache__` and `pip` from the builder-installed venv (never needed after install, ~35MB) and the base image's own system-level `pip` (unreachable at runtime, this app only ever runs from `/opt/venv` — smaller attack surface, not a further size win since it lives in a base-image layer this Dockerfile can only mask, not shrink). 307MB → 270MB, re-verified end-to-end (build, migrate, collectstatic, gunicorn, static asset serving) after each change. #000
 
 ### Fixed (found while verifying the containerized deploy against a real build)

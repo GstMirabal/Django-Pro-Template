@@ -3,8 +3,8 @@
 **Status**: `RATIFIED`
 **Sprint of origin**: #000 (Legacy Onboarding — Full Reverse Engineering, Scenario C)
 **Last Audit Sprint**: #000 (Security Hardening + Containerized Deploy — Rounds 1-4)
-**Last Audit Date**: 2026-07-28
-**Last Audit Commit SHA**: f5ea84d365697d67dda090cae53d935e68eb3b29
+**Last Audit Date**: 2026-07-29
+**Last Audit Commit SHA**: 417667891e1b69bc971ac0b04ea1124c53e1f1a4
 
 ---
 
@@ -45,8 +45,8 @@ Data model (summary only — key entities and relations, one line each; full sch
 - **Brute-force login protection**: `django-axes` locks out a `(username, ip_address)` pair for `AXES_COOLOFF_TIME` after `AXES_FAILURE_LIMIT` failed attempts (HTTP 429), resetting the count on a successful login (`AXES_RESET_ON_SUCCESS`). Covers `/admin/login/` and any future auth view via `AxesStandaloneBackend`.
 - **Response security headers**: `django-csp` (`CONTENT_SECURITY_POLICY`, 4.0+ dict format) and `django-permissions-policy` (`PERMISSIONS_POLICY`, list-of-origins-per-feature format) both apply only in the `if not DEBUG:` block — verified empirically not to break the Django admin UI (no inline `<script>`/`style=` in its rendered pages).
 - **Reverse-proxy TLS trust**: `SECURE_PROXY_SSL_HEADER` is opt-in only (`TRUST_PROXY_SSL_HEADER`), never enabled by default, since trusting `X-Forwarded-Proto` blindly lets a client spoof it when there's no proxy actually stripping that header.
-- **Static file serving**: `whitenoise` (`WhiteNoiseMiddleware`, directly after `SecurityMiddleware`; `STORAGES['staticfiles']` set to its compressed-manifest backend) serves collected static files directly from the app process — no separate proxy/CDN required for a generic deploy. See `docs/DEPLOYMENT.md`.
-- **Container startup order**: `docker-entrypoint.sh` runs `migrate --noinput` then `collectstatic --noinput` on every container start (not at build time, since both need real env vars/DB connectivity that don't exist yet during `docker build`) before `exec`-ing into gunicorn — see `docs/DEPLOYMENT.md` for the multi-replica caveat on automatic `migrate`.
+- **Static file serving**: `whitenoise` (`WhiteNoiseMiddleware`, directly after `SecurityMiddleware`; `STORAGES['staticfiles']` set to its compressed-manifest backend) serves collected static files directly from the app process — no separate proxy/CDN required for a generic deploy. See `docs/guides/CORE_DEPLOYMENT_GUIDE.md`.
+- **Container startup order**: `docker-entrypoint.sh` runs `migrate --noinput` then `collectstatic --noinput` on every container start (not at build time, since both need real env vars/DB connectivity that don't exist yet during `docker build`) before `exec`-ing into gunicorn — see `docs/guides/CORE_DEPLOYMENT_GUIDE.md` for the multi-replica caveat on automatic `migrate`.
 
 ## 6. Non-negotiable Constraints
 | Constraint | Verification |
