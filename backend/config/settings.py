@@ -43,7 +43,7 @@ BASE_DIR: Path = Path(env_base_dir) if env_base_dir else default_base_dir
 config_path = BASE_DIR / 'config.toml'
 
 try:
-    with config_path.open('r', encoding='utf-8') as f:
+    with config_path.open('rb') as f:
         config: Any = envtoml.load(f)
 except FileNotFoundError as e:
     raise ImproperlyConfigured(
