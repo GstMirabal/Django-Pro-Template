@@ -41,6 +41,28 @@ default_base_dir: Path = Path(__file__).resolve().parent.parent.parent
 env_base_dir: str | None = os.environ.get('BASE_DIR')
 BASE_DIR: Path = Path(env_base_dir) if env_base_dir else default_base_dir
 config_path = BASE_DIR / 'config.toml'
+env_path = BASE_DIR / '.env'
+
+# `.env` is loaded here, not in manage.py. envtoml interpolates `$VAR`
+# placeholders out of os.environ while reading config.toml, so whatever
+# populates the environment has to run before that read — and it has to run for
+# EVERY entrypoint, not just the management command. Loading it in manage.py
+# alone left gunicorn/WSGI, ASGI, pytest and any plain script booting with an
+# empty environment and failing on DJANGO_SECRET_KEY.
+#
+# setdefault, not assignment: a variable already present in the real
+# environment wins over the file, which is what container and CI runtimes
+# expect.
+if env_path.exists():
+    with env_path.open(encoding='utf-8') as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            os.environ.setdefault(
+                key.strip(), value.strip().strip('"').strip("'")
+            )
 
 try:
     with config_path.open('rb') as f:
@@ -52,7 +74,12 @@ except FileNotFoundError as e:
     ) from e
 
 
-def _parse_strict_bool(value: Any, key: str) -> bool:  # noqa: ANN401
+def _parse_strict_bool(
+    value: Any,  # noqa: ANN401
+    key: str,
+    *,
+    default: bool | None = None,
+) -> bool:
     """Parse a config value into a real boolean, failing loudly on anything else.
 
     `envtoml`/`toml` only cast a string to a TOML boolean when it is exactly
@@ -62,18 +89,30 @@ def _parse_strict_bool(value: Any, key: str) -> bool:  # noqa: ANN401
     This helper accepts `true`/`false` case-insensitively and refuses to guess
     for anything else.
 
+    An unset optional key needs `default`. `config.toml.example` declares every
+    optional key as `KEY = "$KEY"`, so `envtoml` interpolates it to an EMPTY
+    STRING when the environment variable is absent — the key is present, which
+    means `dict.get(key, fallback)` never reaches its fallback. Without an
+    explicit default here, copying `config.toml.example` and leaving an optional
+    variable unset aborts startup.
+
     Args:
         value (Any): The raw value read from `config.toml` (bool or str).
         key (str): The config key name, used only for the error message.
+        default (bool | None): Value to use when `value` is absent or an empty
+            string. `None` means the key is mandatory and empty is an error.
 
     Returns:
         bool: The parsed boolean value.
 
     Raises:
-        ImproperlyConfigured: If `value` is not a recognizable boolean.
+        ImproperlyConfigured: If `value` is not a recognizable boolean, or is
+            empty with no `default` supplied.
     """
     if isinstance(value, bool):
         return value
+    if default is not None and (value is None or str(value).strip() == ''):
+        return default
     normalized = str(value).strip().lower()
     if normalized == 'true':
         return True
@@ -184,8 +223,9 @@ CORS_ALLOW_CREDENTIALS = True
 # Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#secure-proxy-ssl-header
 # ------------------------------------------------------------------------------
 if _parse_strict_bool(
-    config['django_settings'].get('TRUST_PROXY_SSL_HEADER', 'false'),
+    config['django_settings'].get('TRUST_PROXY_SSL_HEADER'),
     'TRUST_PROXY_SSL_HEADER',
+    default=False,
 ):
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
@@ -203,8 +243,9 @@ if _parse_strict_bool(
 # Documentation: https://docs.djangoproject.com/en/5.2/ref/settings/#session-cookie-samesite
 # ------------------------------------------------------------------------------
 if _parse_strict_bool(
-    config['django_settings'].get('CROSS_SITE_FRONTEND', 'false'),
+    config['django_settings'].get('CROSS_SITE_FRONTEND'),
     'CROSS_SITE_FRONTEND',
+    default=False,
 ):
     SESSION_COOKIE_SAMESITE = 'None'
     CSRF_COOKIE_SAMESITE = 'None'

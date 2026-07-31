@@ -49,6 +49,7 @@ db.sqlite3-journal
 /backend/staticfiles/
 /backend/mediafiles/
 /backend/logs/
+/logs/
 
 # ==============================================================================
 #                      Docker Specific
