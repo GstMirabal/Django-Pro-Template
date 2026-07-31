@@ -79,7 +79,10 @@ settings.json
 /graphify-out/
 
 # .agents session anchor — host-specific, never committed (agents.md §5 state_anchor)
-/docs/active_state.json
+# docs/active_state.json IS tracked: it carries code_containers, topology_map
+# and the audit history that docs_freshness_check.py reads, and start_workflow
+# treats its absence as 'first pipeline session' — so ignoring it makes every
+# fresh clone look like an un-onboarded repository.
 
 # .agents session-state crash-recovery mirror of docs/active_state.json — same
 # jurisdiction, same reason: host-specific, never committed.
