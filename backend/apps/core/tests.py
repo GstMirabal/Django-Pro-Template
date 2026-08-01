@@ -6,7 +6,14 @@ This file contains tests to verify that the project's foundational
 configuration is correct and robust.
 """
 
+import logging
+from unittest.mock import patch
+
+from django.contrib import admin
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
+
+from apps.core.checks import check_admin_forms_are_constructible
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -221,3 +228,112 @@ class SecurityMiddlewareHeaderRegressionTest(TestCase):
         response = self.client.get('/admin/login/')
         self.assertIn('Permissions-Policy', response.headers)
         self.assertEqual(response.headers['Permissions-Policy'], 'geolocation=()')
+
+
+class HealthCheckTest(TestCase):
+    """The liveness probe must report per-dependency state, not just 200/500."""
+
+    def test_reports_healthy_when_dependencies_are_reachable(self) -> None:
+        """Verify a fully reachable stack yields 200 and a HEALTHY verdict."""
+        response = self.client.get('/health/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {'database': 'OK', 'cache': 'OK', 'system': 'HEALTHY'},
+        )
+
+    def test_reports_degraded_when_cache_round_trip_fails(self) -> None:
+        """Verify an unreachable cache degrades the verdict and returns 503.
+
+        Only the view's own reference is replaced: patching the shared cache
+        would also break unrelated machinery that reads the same object.
+        """
+
+        class _DeadCache:
+            """Cache double whose round-trip always fails."""
+
+            def set(self, *args: object, **kwargs: object) -> None:  # noqa: ARG002
+                """Raise as an unreachable backend would."""
+                msg = 'cache backend unreachable'
+                raise ConnectionError(msg)
+
+            def get(self, *args: object, **kwargs: object) -> None:  # noqa: ARG002
+                """Return nothing, as a missing entry would."""
+                return None
+
+        with patch('apps.core.views.cache', _DeadCache()):
+            response = self.client.get('/health/')
+
+        self.assertEqual(response.status_code, 503)
+        body = response.json()
+        self.assertEqual(body['cache'], 'DOWN')
+        self.assertEqual(body['database'], 'OK')
+        self.assertEqual(body['system'], 'DEGRADED')
+
+    def test_rejects_non_get(self) -> None:
+        """Verify the probe is read-only."""
+        self.assertEqual(self.client.post('/health/').status_code, 405)
+
+
+class ApplicationLoggingTest(TestCase):
+    """Application loggers must reach a handler.
+
+    LOGGING previously declared only 'django' and 'project', while every module
+    calls getLogger(__name__) — yielding 'apps.*', 'config.*' and 'utils.*'.
+    Those records matched no logger and were discarded in silence.
+    """
+
+    def _resolved_handlers(self, name: str) -> list[logging.Handler]:
+        """Walk the logger hierarchy the way logging dispatches a record.
+
+        Args:
+            name (str): Dotted logger name.
+
+        Returns:
+            list[logging.Handler]: Every handler the record would reach.
+        """
+        handlers: list[logging.Handler] = []
+        current: logging.Logger | None = logging.getLogger(name)
+        while current:
+            handlers.extend(current.handlers)
+            current = current.parent if current.propagate else None
+        return handlers
+
+    def test_application_loggers_reach_a_handler(self) -> None:
+        """Verify no application logger resolves to an empty handler list."""
+        for name in ('apps.core.views', 'apps.core.validators', 'config.settings'):
+            with self.subTest(logger=name):
+                self.assertTrue(
+                    self._resolved_handlers(name),
+                    f'{name!r} resolves to no handler; its records are discarded',
+                )
+
+
+class AdminIntegrityCheckTest(TestCase):
+    """core.E001 must catch a field declared on the wrong model.
+
+    Django's own checks do not validate inline `fields`, so this class of
+    defect reaches production as a 500 on the change page.
+    """
+
+    def test_registered_admins_build_cleanly(self) -> None:
+        """Verify every registered admin form and inline formset constructs."""
+        self.assertEqual(check_admin_forms_are_constructible(), [])
+
+    def test_detects_a_field_that_does_not_exist(self) -> None:
+        """Verify a field naming no model attribute produces core.E001."""
+
+        class BrokenGroupAdmin(admin.ModelAdmin):
+            """Admin declaring a field the model does not have."""
+
+            fields = ('name', 'field_that_does_not_exist')
+
+        original = admin.site._registry[Group]  # noqa: SLF001
+        admin.site._registry[Group] = BrokenGroupAdmin(Group, admin.site)  # noqa: SLF001
+        try:
+            messages = check_admin_forms_are_constructible()
+        finally:
+            admin.site._registry[Group] = original  # noqa: SLF001
+
+        self.assertTrue(any(m.id == 'core.E001' for m in messages))

@@ -121,5 +121,13 @@ EMAIL_HOST_PASSWORD = "$EMAIL_HOST_PASSWORD"
 PROJECT_LOGS_DIR = "$PROJECT_LOGS_DIR"
 
 
-
-
+# ==============================================================================
+#                       CACHE SETTINGS (optional)
+# ==============================================================================
+# Leave empty to use Django's per-process LocMemCache, which is adequate while
+# nothing shares state across workers. Set it as soon as you install an app
+# that relies on the cache for single-use tokens, rate limiting or step-up
+# authentication — those guarantees do not hold on a per-process backend.
+# The bundled docker-compose service maps Redis to 127.0.0.1:6379.
+[cache]
+REDIS_URL = "$REDIS_URL"
