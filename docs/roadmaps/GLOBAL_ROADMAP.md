@@ -18,6 +18,7 @@ Backlog derived from `docs/audits/AUDIT_001_BACKEND.md`. Every item traces to a 
 | F-006 | `.gitignore` covers the log directory the application actually creates |
 | F-007 | Workflows declare `permissions: contents: read` |
 | — | pytest harness, Django 6.0.7, four retroactive ADRs, reusable CI workflow |
+| I-001 | `AXES_USERNAME_FORM_FIELD` pinned to `'username'`. Raised by the integration run: install a user model keyed on email and axes 8 records every `/admin/login/` failure as `username=None`, degrading lockout from per-account to per-IP while `AXES_RESET_ON_SUCCESS` stops matching — silently, with nothing raised. Root cause is an axes default that changed between 6.5.1 (literal `"username"`) and 8.3.1 (derived from `USERNAME_FIELD`), both read from the installed packages. Guarded by `AxesLockoutTest.test_username_form_field_is_pinned_rather_than_derived`, checked to fail without the pin |
 
 ## Open
 

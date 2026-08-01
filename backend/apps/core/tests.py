@@ -31,6 +31,27 @@ class ConfigurationSmokeTest(TestCase):
         self.assertTrue(expr=True)
 
 
+def _required_user_fields(model: type) -> dict[str, str]:
+    """Build the identifying fields the active user model requires.
+
+    Derived from `USERNAME_FIELD` and `REQUIRED_FIELDS` so the caller works
+    against any `AUTH_USER_MODEL`, not just Django's default.
+
+    Args:
+        model (type): The active user model.
+
+    Returns:
+        dict[str, str]: Field name to a plausible value, suitable for
+            `create_user()`.
+    """
+    samples = {
+        'email': 'testuser@example.test',
+        'username': 'testuser',
+    }
+    names = [model.USERNAME_FIELD, *getattr(model, 'REQUIRED_FIELDS', [])]
+    return {name: samples.get(name, f'test-{name}') for name in names}
+
+
 class DatabaseConnectionTest(TestCase):
     """Verifies the database configuration and active user model interaction."""
 
@@ -40,12 +61,19 @@ class DatabaseConnectionTest(TestCase):
         `AUTH_USER_MODEL` is intentionally left unset in this base template
         (see `settings.py` Section 8.1) — swapping in a custom user model is
         a decision each fork makes for itself, not something imposed here.
-        `get_user_model()` resolves to whatever is actually active, so this
-        test stays valid regardless of that decision.
+
+        The required fields are derived from the active model's own
+        `USERNAME_FIELD` and `REQUIRED_FIELDS` rather than hardcoded.
+        `get_user_model()` alone is not enough: it resolves the class, but a
+        custom model's `create_user()` signature differs, and an earlier
+        version of this test called it with Django's default arguments — so it
+        claimed to be model-agnostic while breaking on the first fork that
+        installed one.
         """
         try:
+            field_values = _required_user_fields(User)
             user = User.objects.create_user(
-                username='testuser', password='TestPassword123!'
+                password='TestPassword123!', **field_values
             )
             self.assertIsNotNone(user)
         except Exception as e:  # noqa: BLE001
@@ -173,10 +201,13 @@ class AxesLockoutTest(TestCase):
 
         Otherwise the count would linger for that (username, IP) pair.
         """
+        # Derived from the active model, so this holds for any AUTH_USER_MODEL.
+        field_values = _required_user_fields(User)
+        login_id = field_values[User.USERNAME_FIELD]
         User.objects.create_user(
-            username='resettable-user', password='CorrectPassword123!', is_staff=True
+            password='CorrectPassword123!', is_staff=True, **field_values
         )
-        bad_credentials = {'username': 'resettable-user', 'password': 'wrong-password'}
+        bad_credentials = {'username': login_id, 'password': 'wrong-password'}
 
         # A few failures, well under the limit.
         for _ in range(settings.AXES_FAILURE_LIMIT - 2):
@@ -184,7 +215,7 @@ class AxesLockoutTest(TestCase):
 
         good_response = self.client.post(
             '/admin/login/',
-            {'username': 'resettable-user', 'password': 'CorrectPassword123!'},
+            {'username': login_id, 'password': 'CorrectPassword123!'},
         )
         self.assertNotEqual(good_response.status_code, 429)
 
@@ -193,6 +224,28 @@ class AxesLockoutTest(TestCase):
         for _ in range(settings.AXES_FAILURE_LIMIT - 1):
             response = self.client.post('/admin/login/', bad_credentials)
             self.assertNotEqual(response.status_code, 429)
+
+    def test_username_form_field_is_pinned_rather_than_derived(self) -> None:
+        """AXES_USERNAME_FORM_FIELD must be the literal login form field name.
+
+        Left unset, django-axes derives it lazily from
+        `get_user_model().USERNAME_FIELD`. Django's own `AuthenticationForm` —
+        behind /admin/login/ and `LoginView` — names its field `username`
+        whatever the model says, so a custom user model keyed on email makes
+        axes look up a key the credentials never carry. Every failed attempt is
+        then recorded with `username=None`: lockout degrades from per-account to
+        per-IP and AXES_RESET_ON_SUCCESS stops matching, with nothing raised.
+
+        The lazy default proxies both `==` and `isinstance`, so only its
+        concrete type tells it apart from a pinned value.
+        """
+        self.assertEqual(settings.AXES_USERNAME_FORM_FIELD, 'username')
+        self.assertIs(
+            type(settings.AXES_USERNAME_FORM_FIELD),
+            str,
+            'AXES_USERNAME_FORM_FIELD is tracking USERNAME_FIELD instead of '
+            'being pinned — see the comment beside it in config/settings.py.',
+        )
 
 
 class SecurityMiddlewareHeaderRegressionTest(TestCase):
