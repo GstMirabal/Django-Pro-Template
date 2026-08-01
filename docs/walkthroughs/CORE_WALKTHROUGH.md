@@ -1,6 +1,6 @@
 # 🏁 Walkthrough: CORE
 **File**: `docs/walkthroughs/CORE_WALKTHROUGH.md` (RA-06 Option B naming)
-**Last updated**: Sprint #000 (Security Hardening + Containerized Deploy — Rounds 1-4)
+**Last updated**: Sprint #001 (Reference scaffold: audit, harness, Django 6)
 
 ---
 
@@ -10,11 +10,21 @@
 | #000 | Legacy Onboarding (Full Reverse Engineering) | Pre-existing Django backend audited and documented under the `.agents` pipeline for the first time; no code changed. |
 | #000 | Security Hardening (Rounds 1-3) | Fixed a silent `DEBUG` boolean-parsing bug, a `django-csp` 4.0 config-format incompatibility that would have crashed the app at production boot, and a dead `PERMISSIONS_POLICY` setting that never sent its header. Added `CSRF_TRUSTED_ORIGINS`/`CORS_ALLOW_CREDENTIALS`/opt-in `CROSS_SITE_FRONTEND` for decoupled-frontend session auth, opt-in `SECURE_PROXY_SSL_HEADER`, configurable `TIME_ZONE`/`LANGUAGE_CODE`, `django-axes` brute-force lockout (tuned to `(username, ip)` pairs with reset-on-success), CI (lint + tests + a real `DEBUG=false` boot check), Dependabot, and a functional test suite covering all of the above. Cleaned up leftover "cryptobot" branding. |
 | #000 | Containerized Deploy (Round 4) | Added a production `Dockerfile` (multi-stage, non-root, own `HEALTHCHECK`) and `docker-entrypoint.sh` (`migrate` + `collectstatic` on every start), `whitenoise` for static files, an optional `backend` service in `docker-compose.yml`, hardened the `db` service (pinned patch, healthcheck, `127.0.0.1`-only port, restart policy), added the `docker` ecosystem to Dependabot, and wrote `docs/guides/CORE_DEPLOYMENT_GUIDE.md` (guide-level, not tied to one hosting platform). The existing local-dev flow (`docker-compose up -d db` + Django via `venv`) is unchanged. |
+| #001 | Reference scaffold | Established this repository as the backend scaffold the other Django hosts copy from. Full audit under the `.agents` protocol (`docs/audits/AUDIT_001_BACKEND.md`, 8 findings): fixed `.env` loading that only ran under `manage.py`, optional boolean keys that could never reach their default, application loggers that reached no handler, and a `.gitignore` rule pointing at the wrong log directory. Added a `/health/` endpoint, the `core.E001` admin-integrity system check, an explicit `CACHES` block with optional Redis, a pytest harness running on in-RAM SQLite, and four retroactive ADRs. Upgraded to Django 6.0.7 across ten dependency bumps with no code change. Extracted the pipeline to a reusable workflow. |
 | (pre-`.agents`) | Django 5.2 project scaffolded | `config.toml`/`.env`-driven settings, structured (console + rotating file + JSON) logging, `apps.core` registered as the first local app. |
 | (pre-`.agents`) | Password hardening | Custom `PasswordComplexityValidator` added alongside Django's built-in validators and `pwned_passwords_django`. |
 
 ## 2. Current state
-The backend boots via `backend/manage.py` → `config.settings`, reading configuration from `config.toml` (itself templated from `.env`). `apps.core` is registered in `INSTALLED_APPS` but is functionally an empty skeleton: `models.py`, `views.py`, and `admin.py` remain Django's default stub comments, and no URL in `backend/config/urls.py` routes to it besides the Django admin site. The one real piece of app-level logic, `PasswordComplexityValidator`, sits alongside a project-level security stack that is now verified, not just present: CSP (`django-csp` 4.0 dict format), CORS/CSRF for a decoupled frontend, brute-force lockout (`django-axes`), and a `Permissions-Policy` header (`django-permissions-policy`) — all confirmed with a real Postgres-backed test run in this session, including a functional lockout test (5 failed logins → HTTP 429) and a live check that CSP doesn't break the Django admin UI. `manage.py check --deploy` under a simulated `DEBUG=false` environment now returns zero issues; this same check runs in CI on every push/PR. Implements: `docs/architecture/CORE_BLUEPRINT.md`.
+
+The backend boots from any entrypoint — `manage.py`, WSGI, ASGI or pytest — reading configuration from `config.toml`, itself templated from the environment. Until Sprint #001 only `manage.py` populated that environment, so gunicorn on a host with a `.env` file did not start.
+
+`apps.core` is no longer an empty skeleton. It owns `PasswordComplexityValidator`, a `/health/` endpoint probing database and cache independently, and a custom system check (`core.E001`) that constructs every registered admin form and inline formset at startup — catching a class of misconfiguration Django's own checks do not validate. `models.py` and `admin.py` remain deliberate stubs.
+
+The project-level security stack is verified rather than merely present: CSP in `django-csp` 4.0 dict format, CORS/CSRF for a decoupled frontend, `django-axes` lockout tested against the real login flow, `Permissions-Policy`, and strict boolean parsing on the four security-relevant settings. `manage.py check --deploy` under a real `DEBUG=false` boot returns zero issues, and CI runs that same boot on every push.
+
+Runs on Django 6.0.7. The suite is 19 tests on an in-RAM SQLite database, needing neither Docker nor a reachable PostgreSQL.
+
+Implements: `docs/architecture/CORE_BLUEPRINT.md`.
 
 ## 3. Known limitations / tech debt
 | Item | Marked as | Tracked where |

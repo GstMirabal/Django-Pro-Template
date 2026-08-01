@@ -9,16 +9,16 @@
   "current_sprint": {
     "id": "001",
     "slug": "001-backend-reference-scaffold",
-    "status": "IN_PROGRESS",
+    "status": "CLOSED",
     "stack": "backend",
     "layer": "reference-scaffold",
     "last_audit_sprint": 1,
-    "last_audit_date": "2026-07-31",
+    "last_audit_date": "2026-08-01",
     "last_audit_commit_sha": "d6ad5df"
   },
-  "session_status": "open",
+  "session_status": "closed",
   "topology_version": 2,
-  "last_session_closed_at": "2026-07-29",
+  "last_session_closed_at": "2026-08-01",
   "last_closed_commit_sha": "3cefa0becb80ba3c4766e599ed95b83f96653591",
   "topology_map": [
     ".github/workflows/",
@@ -41,5 +41,10 @@
       "root": "backend/apps/"
     }
   ],
-  "adr_autoescalate_triggers": [1, 3, 5, 7]
+  "adr_autoescalate_triggers": [
+    1,
+    3,
+    5,
+    7
+  ]
 }

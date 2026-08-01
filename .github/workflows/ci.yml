@@ -2,129 +2,24 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
-# Least privilege for GITHUB_TOKEN: these jobs only read the checkout. Without
-# this block both inherit the repository default, which may include write
-# scopes a lint-and-test run never needs (CodeQL: actions/missing-workflow-permissions).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: ci_db
-          POSTGRES_USER: ci_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DEBUG: "true"
-      ALLOWED_HOSTS: "localhost,127.0.0.1"
-      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
-      TRUST_PROXY_SSL_HEADER: "false"
-      CROSS_SITE_FRONTEND: "false"
-      LANGUAGE_CODE: "en-us"
-      TIME_ZONE: "UTC"
-      PROJECT_NAME: "django-pro-template-ci"
-      POSTGRES_DB: ci_db
-      POSTGRES_USER: ci_user
-      POSTGRES_PASSWORD: ci_password
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      PROJECT_LOGS_DIR: "logs"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Generate a throwaway DJANGO_SECRET_KEY for this run
-        run: |
-          echo "DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" >> "$GITHUB_ENV"
-
-      - name: Generate config.toml
-        run: cp config.toml.example config.toml
-
-      - name: Lint (ruff)
-        run: ruff check .
-
-      - name: Run tests
-        working-directory: backend
-        run: python manage.py test apps.core
-
-  deploy-check:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: ci_db
-          POSTGRES_USER: ci_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DEBUG: "false"
-      ALLOWED_HOSTS: "example.com"
-      CORS_ALLOWED_ORIGINS: "https://app.example.com"
-      TRUST_PROXY_SSL_HEADER: "false"
-      CROSS_SITE_FRONTEND: "false"
-      LANGUAGE_CODE: "en-us"
-      TIME_ZONE: "UTC"
-      PROJECT_NAME: "django-pro-template-ci"
-      POSTGRES_DB: ci_db
-      POSTGRES_USER: ci_user
-      POSTGRES_PASSWORD: ci_password
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      PROJECT_LOGS_DIR: "logs"
-      EMAIL_HOST: "smtp.example.com"
-      EMAIL_PORT: "587"
-      EMAIL_USE_TLS: "true"
-      EMAIL_HOST_USER: "ci@example.com"
-      EMAIL_HOST_PASSWORD: "ci-only-not-a-real-secret"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Generate a throwaway DJANGO_SECRET_KEY for this run
-        run: |
-          echo "DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" >> "$GITHUB_ENV"
-
-      - name: Generate config.toml
-        run: cp config.toml.example config.toml
-
-      - name: Simulate production boot (manage.py check --deploy)
-        working-directory: backend
-        run: python manage.py check --deploy --fail-level WARNING
+  ci:
+    # The pipeline itself lives in django-ci.yml so the repositories derived
+    # from this template call it rather than copy it. A copied pipeline drifts,
+    # and the drift stays invisible until two repositories behave differently
+    # under the same commit.
+    uses: ./.github/workflows/django-ci.yml
+    with:
+      project-name: django-pro-template-ci
+      sprint-id: "1"
