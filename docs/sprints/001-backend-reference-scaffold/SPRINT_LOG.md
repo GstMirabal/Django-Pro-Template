@@ -11,7 +11,7 @@
 
 Establish this repository as the backend scaffold the other Django hosts copy from, and close it against an explicit exit criterion rather than a judgement call.
 
-The trigger: a sibling repository, `User-APP-Template`, was found to duplicate this project's scaffold — 15 shared files, all diverged — and to have accumulated genuine improvements this repository lacked. Propagating from here requires this repository to be the more advanced of the two first.
+The trigger: a sibling repository, `User-APP-Template` (renamed `django-users-app` in its Sprint #004), was found to duplicate this project's scaffold — 15 shared files, all diverged — and to have accumulated genuine improvements this repository lacked. Propagating from here requires this repository to be the more advanced of the two first.
 
 ## 2. Sequence
 
