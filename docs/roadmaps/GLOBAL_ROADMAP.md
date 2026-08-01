@@ -18,6 +18,7 @@ Backlog derived from `docs/audits/AUDIT_001_BACKEND.md`. Every item traces to a 
 | F-006 | `.gitignore` covers the log directory the application actually creates |
 | F-007 | Workflows declare `permissions: contents: read` |
 | — | pytest harness, Django 6.0.7, four retroactive ADRs, reusable CI workflow |
+| R-002 | The shared-cache requirement is now asserted by the installing app rather than assumed here: `django-users-app` states it under *Host requirements* in its `USERS_CONTRACT.md`, which is where a consumer looks. This template keeps its `LocMemCache` default deliberately |
 | I-001 | `AXES_USERNAME_FORM_FIELD` pinned to `'username'`. Raised by the integration run: install a user model keyed on email and axes 8 records every `/admin/login/` failure as `username=None`, degrading lockout from per-account to per-IP while `AXES_RESET_ON_SUCCESS` stops matching — silently, with nothing raised. Root cause is an axes default that changed between 6.5.1 (literal `"username"`) and 8.3.1 (derived from `USERNAME_FIELD`), both read from the installed packages. Guarded by `AxesLockoutTest.test_username_form_field_is_pinned_rather_than_derived`, checked to fail without the pin |
 
 ## Open
@@ -26,7 +27,6 @@ Backlog derived from `docs/audits/AUDIT_001_BACKEND.md`. Every item traces to a 
 | :--- | :--- | :--- |
 | F-008 | `dependabot.yml` declares no grouping and no `open-pull-requests-limit`. With Dependabot now enabled at the repository level, a routine week can open one pull request per package. | Low |
 | R-001 | `docs/guides/CORE_DEPLOYMENT_GUIDE.md` predates the `/health/` endpoint and the `CACHES` block; neither is documented as a deployment concern. | Low |
-| R-002 | The `users` identity app (`User-APP-Template`) will need a shared cache for TOTP anti-replay and step-up authentication. This template deliberately defaults to `LocMemCache` — the installing app must assert the requirement itself, and that contract is not yet written down anywhere but ADR-0001's neighbourhood. | Medium, blocks the `users` install |
 | R-003 | C4 Level 3 stays advisory while `backend/apps/` holds a single container. It becomes required as soon as a second app is installed. | Informational |
 
 ## Deferred by design
