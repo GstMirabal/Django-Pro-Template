@@ -419,6 +419,37 @@ except (KeyError, ValueError) as e:
 
 
 # ==============================================================================
+# SECTION 6.5: CACHE CONFIGURATION
+# ==============================================================================
+# Django's implicit default is a per-process LocMemCache. That is adequate while
+# nothing shares state, and silently wrong the moment something does: any app
+# relying on the cache for single-use tokens, rate limiting or step-up
+# authentication loses its guarantee across workers without raising anything.
+#
+# Optional here, because this template ships no app that needs it. It is
+# declared explicitly so an installed app inherits a real backend instead of
+# discovering the per-process default in production.
+# ------------------------------------------------------------------------------
+cache_config = config.get('cache', {})
+REDIS_URL: str | None = cache_config.get('REDIS_URL') or os.environ.get('REDIS_URL')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'django-pro-template',
+        }
+    }
+
+
+# ==============================================================================
 # SECTION 7: PASSWORD VALIDATION AND HASHING
 # ==============================================================================
 
@@ -652,6 +683,25 @@ LOGGING = {
         'project': {
             'handlers': ['console', 'project_log_file', 'project_json_file'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        # Application code calls logging.getLogger(__name__), which yields names
+        # under 'apps.', 'config.' and 'utils.'. Without these three entries
+        # those records match no logger, reach no handler, and are discarded in
+        # silence — including anything a future app logs at CRITICAL.
+        'apps': {
+            'handlers': ['console', 'project_log_file', 'project_json_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'config': {
+            'handlers': ['console', 'project_log_file', 'project_json_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'utils': {
+            'handlers': ['console', 'project_log_file', 'project_json_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
     },

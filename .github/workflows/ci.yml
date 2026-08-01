@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
 
+# Least privilege for GITHUB_TOKEN: these jobs only read the checkout. Without
+# this block both inherit the repository default, which may include write
+# scopes a lint-and-test run never needs (CodeQL: actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
