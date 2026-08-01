@@ -225,6 +225,28 @@ class AxesLockoutTest(TestCase):
             response = self.client.post('/admin/login/', bad_credentials)
             self.assertNotEqual(response.status_code, 429)
 
+    def test_username_form_field_is_pinned_rather_than_derived(self) -> None:
+        """AXES_USERNAME_FORM_FIELD must be the literal login form field name.
+
+        Left unset, django-axes derives it lazily from
+        `get_user_model().USERNAME_FIELD`. Django's own `AuthenticationForm` —
+        behind /admin/login/ and `LoginView` — names its field `username`
+        whatever the model says, so a custom user model keyed on email makes
+        axes look up a key the credentials never carry. Every failed attempt is
+        then recorded with `username=None`: lockout degrades from per-account to
+        per-IP and AXES_RESET_ON_SUCCESS stops matching, with nothing raised.
+
+        The lazy default proxies both `==` and `isinstance`, so only its
+        concrete type tells it apart from a pinned value.
+        """
+        self.assertEqual(settings.AXES_USERNAME_FORM_FIELD, 'username')
+        self.assertIs(
+            type(settings.AXES_USERNAME_FORM_FIELD),
+            str,
+            'AXES_USERNAME_FORM_FIELD is tracking USERNAME_FIELD instead of '
+            'being pinned — see the comment beside it in config/settings.py.',
+        )
+
 
 class SecurityMiddlewareHeaderRegressionTest(TestCase):
     """Regression guard for two previously-silent settings-format bugs.

@@ -327,6 +327,15 @@ AXES_LOCKOUT_PARAMETERS = [['username', 'ip_address']]
 # the full AXES_COOLOFF_TIME — a handful of typos spread across otherwise
 # successful sessions could eventually trip the lockout.
 AXES_RESET_ON_SUCCESS = True
+# Pinned rather than left to the library default, which is lazily derived from
+# `get_user_model().USERNAME_FIELD`. Django's own `AuthenticationForm` — used by
+# /admin/login/ and `LoginView` — always names its field `username`, whatever the
+# model's USERNAME_FIELD is. Swap in a custom user model keyed on email and the
+# default resolves to 'email', axes finds no such key in the credentials, and
+# records every failed attempt with `username=None`: lockout silently degrades
+# from per-account to per-IP and AXES_RESET_ON_SUCCESS never matches. Nothing
+# errors, so it is invisible without inspecting AccessAttempt rows.
+AXES_USERNAME_FORM_FIELD = 'username'
 
 
 # ==============================================================================
