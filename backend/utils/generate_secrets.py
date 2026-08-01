@@ -16,6 +16,7 @@ data is encrypted under it.
 
 import secrets
 import string
+import sys
 
 
 def django_secret_key() -> str:
@@ -78,7 +79,30 @@ def encryption_pepper() -> str:
 
 
 def main() -> None:
-    """Print every generated secret, grouped by the section it belongs to."""
+    """Write generated secrets to an interactive terminal, and nowhere else.
+
+    Raises:
+        SystemExit: If stdout is not a terminal.
+    """
+    if not sys.stdout.isatty():
+        sys.exit(
+            'Refusing to run: stdout is not a terminal.\n'
+            'Redirecting this output would write live secrets into a file, a '
+            'pipeline log or a shell transcript. Run it interactively and copy '
+            'the values by hand.'
+        )
+
+    # CodeQL reports py/clear-text-logging-sensitive-data on the lines below,
+    # and it is right: they put secrets on stdout. That is the function. The
+    # alerts are dismissed as "won't fix" with this reasoning rather than
+    # worked around, because an indirection that hides the flow from the
+    # analyser would leave the behaviour unchanged and the next reader
+    # misinformed.
+    #
+    # What the rule is really guarding against is the value reaching somewhere
+    # durable — a pipeline log, a redirected file, a shell transcript. The TTY
+    # guard above closes that: a redirect or a CI run exits before a single
+    # secret is generated.
     print('=' * 64)
     print('  SECRET GENERATOR')
     print('=' * 64)
