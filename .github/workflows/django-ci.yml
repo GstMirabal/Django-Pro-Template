@@ -9,18 +9,35 @@ name: Django CI (reusable)
 #       uses: GstMirabal/Django-Pro-Template/.github/workflows/django-ci.yml@main
 #       with:
 #         project-name: my-project
+#
+# Two kinds of repository call this, and they need different pipelines. A
+# project owns its settings and boots: it gets Postgres, a generated
+# config.toml, system checks and a production boot simulation. A reusable app
+# owns none of that — no manage.py, no settings module, nothing to boot — so it
+# gets lint, suite and documentation gate only. They are separate jobs rather
+# than one job with toggles because a `services:` block cannot be switched off
+# by an input: Postgres would spin up for an app that never opens a socket.
 
 on:
   workflow_call:
     inputs:
+      mode:
+        description: >-
+          `project` for a bootable Django project, `app` for a reusable Django
+          application installed into a host.
+        type: string
+        default: project
       python-version:
         description: Python version used for every job.
         type: string
         default: "3.13"
       project-name:
-        description: Value for PROJECT_NAME, used by docker-compose and logs.
+        description: >-
+          Value for PROJECT_NAME, used by docker-compose and logs. Ignored in
+          `app` mode.
         type: string
-        required: true
+        required: false
+        default: app
       test-command:
         description: Command that runs the suite, from the repository root.
         type: string
@@ -40,8 +57,42 @@ permissions:
   contents: read
 
 jobs:
+  app-lint-and-test:
+    name: Lint and tests (app)
+    if: inputs.mode == 'app'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      # An app carries its own minimal host settings for the suite, so there is
+      # no config.toml to generate and no manage.py to check.
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+      - name: Documentation freshness gate
+        if: inputs.run-docs-gate
+        run: python .agents/scripts/docs_freshness_check.py . ${{ inputs.sprint-id }}
+
   lint-and-test:
     name: Lint and tests
+    if: inputs.mode == 'project'
     runs-on: ubuntu-latest
 
     services:
@@ -114,6 +165,7 @@ jobs:
 
   deploy-check:
     name: Production boot simulation
+    if: inputs.mode == 'project'
     runs-on: ubuntu-latest
 
     # Boots with DEBUG=false so the production-only branch actually executes.
