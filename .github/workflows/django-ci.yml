@@ -156,6 +156,13 @@ jobs:
         working-directory: backend
         run: python manage.py check --fail-level WARNING
 
+      # A model edited without its migration passes lint, passes the system
+      # checks and passes the suite, then fails on the first deploy that runs
+      # `migrate` against a real database.
+      - name: Missing migrations check
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Run tests
         run: ${{ inputs.test-command }}
 
