@@ -35,12 +35,12 @@ jobs:
     # bearer clients getting 403 — and both were found by doing this by hand.
     # Doing it by hand does not survive contact with a busy week.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Check out django-users-app
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: GstMirabal/django-users-app
           path: users-app
