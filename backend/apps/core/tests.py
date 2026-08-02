@@ -6,7 +6,14 @@ This file contains tests to verify that the project's foundational
 configuration is correct and robust.
 """
 
+import logging
+from unittest.mock import patch
+
+from django.contrib import admin
+from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
+
+from apps.core.checks import check_admin_forms_are_constructible
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -24,6 +31,27 @@ class ConfigurationSmokeTest(TestCase):
         self.assertTrue(expr=True)
 
 
+def _required_user_fields(model: type) -> dict[str, str]:
+    """Build the identifying fields the active user model requires.
+
+    Derived from `USERNAME_FIELD` and `REQUIRED_FIELDS` so the caller works
+    against any `AUTH_USER_MODEL`, not just Django's default.
+
+    Args:
+        model (type): The active user model.
+
+    Returns:
+        dict[str, str]: Field name to a plausible value, suitable for
+            `create_user()`.
+    """
+    samples = {
+        'email': 'testuser@example.test',
+        'username': 'testuser',
+    }
+    names = [model.USERNAME_FIELD, *getattr(model, 'REQUIRED_FIELDS', [])]
+    return {name: samples.get(name, f'test-{name}') for name in names}
+
+
 class DatabaseConnectionTest(TestCase):
     """Verifies the database configuration and active user model interaction."""
 
@@ -33,12 +61,19 @@ class DatabaseConnectionTest(TestCase):
         `AUTH_USER_MODEL` is intentionally left unset in this base template
         (see `settings.py` Section 8.1) — swapping in a custom user model is
         a decision each fork makes for itself, not something imposed here.
-        `get_user_model()` resolves to whatever is actually active, so this
-        test stays valid regardless of that decision.
+
+        The required fields are derived from the active model's own
+        `USERNAME_FIELD` and `REQUIRED_FIELDS` rather than hardcoded.
+        `get_user_model()` alone is not enough: it resolves the class, but a
+        custom model's `create_user()` signature differs, and an earlier
+        version of this test called it with Django's default arguments — so it
+        claimed to be model-agnostic while breaking on the first fork that
+        installed one.
         """
         try:
+            field_values = _required_user_fields(User)
             user = User.objects.create_user(
-                username='testuser', password='TestPassword123!'
+                password='TestPassword123!', **field_values
             )
             self.assertIsNotNone(user)
         except Exception as e:  # noqa: BLE001
@@ -166,10 +201,13 @@ class AxesLockoutTest(TestCase):
 
         Otherwise the count would linger for that (username, IP) pair.
         """
+        # Derived from the active model, so this holds for any AUTH_USER_MODEL.
+        field_values = _required_user_fields(User)
+        login_id = field_values[User.USERNAME_FIELD]
         User.objects.create_user(
-            username='resettable-user', password='CorrectPassword123!', is_staff=True
+            password='CorrectPassword123!', is_staff=True, **field_values
         )
-        bad_credentials = {'username': 'resettable-user', 'password': 'wrong-password'}
+        bad_credentials = {'username': login_id, 'password': 'wrong-password'}
 
         # A few failures, well under the limit.
         for _ in range(settings.AXES_FAILURE_LIMIT - 2):
@@ -177,7 +215,7 @@ class AxesLockoutTest(TestCase):
 
         good_response = self.client.post(
             '/admin/login/',
-            {'username': 'resettable-user', 'password': 'CorrectPassword123!'},
+            {'username': login_id, 'password': 'CorrectPassword123!'},
         )
         self.assertNotEqual(good_response.status_code, 429)
 
@@ -186,6 +224,28 @@ class AxesLockoutTest(TestCase):
         for _ in range(settings.AXES_FAILURE_LIMIT - 1):
             response = self.client.post('/admin/login/', bad_credentials)
             self.assertNotEqual(response.status_code, 429)
+
+    def test_username_form_field_is_pinned_rather_than_derived(self) -> None:
+        """AXES_USERNAME_FORM_FIELD must be the literal login form field name.
+
+        Left unset, django-axes derives it lazily from
+        `get_user_model().USERNAME_FIELD`. Django's own `AuthenticationForm` —
+        behind /admin/login/ and `LoginView` — names its field `username`
+        whatever the model says, so a custom user model keyed on email makes
+        axes look up a key the credentials never carry. Every failed attempt is
+        then recorded with `username=None`: lockout degrades from per-account to
+        per-IP and AXES_RESET_ON_SUCCESS stops matching, with nothing raised.
+
+        The lazy default proxies both `==` and `isinstance`, so only its
+        concrete type tells it apart from a pinned value.
+        """
+        self.assertEqual(settings.AXES_USERNAME_FORM_FIELD, 'username')
+        self.assertIs(
+            type(settings.AXES_USERNAME_FORM_FIELD),
+            str,
+            'AXES_USERNAME_FORM_FIELD is tracking USERNAME_FIELD instead of '
+            'being pinned — see the comment beside it in config/settings.py.',
+        )
 
 
 class SecurityMiddlewareHeaderRegressionTest(TestCase):
@@ -221,3 +281,112 @@ class SecurityMiddlewareHeaderRegressionTest(TestCase):
         response = self.client.get('/admin/login/')
         self.assertIn('Permissions-Policy', response.headers)
         self.assertEqual(response.headers['Permissions-Policy'], 'geolocation=()')
+
+
+class HealthCheckTest(TestCase):
+    """The liveness probe must report per-dependency state, not just 200/500."""
+
+    def test_reports_healthy_when_dependencies_are_reachable(self) -> None:
+        """Verify a fully reachable stack yields 200 and a HEALTHY verdict."""
+        response = self.client.get('/health/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {'database': 'OK', 'cache': 'OK', 'system': 'HEALTHY'},
+        )
+
+    def test_reports_degraded_when_cache_round_trip_fails(self) -> None:
+        """Verify an unreachable cache degrades the verdict and returns 503.
+
+        Only the view's own reference is replaced: patching the shared cache
+        would also break unrelated machinery that reads the same object.
+        """
+
+        class _DeadCache:
+            """Cache double whose round-trip always fails."""
+
+            def set(self, *args: object, **kwargs: object) -> None:  # noqa: ARG002
+                """Raise as an unreachable backend would."""
+                msg = 'cache backend unreachable'
+                raise ConnectionError(msg)
+
+            def get(self, *args: object, **kwargs: object) -> None:  # noqa: ARG002
+                """Return nothing, as a missing entry would."""
+                return None
+
+        with patch('apps.core.views.cache', _DeadCache()):
+            response = self.client.get('/health/')
+
+        self.assertEqual(response.status_code, 503)
+        body = response.json()
+        self.assertEqual(body['cache'], 'DOWN')
+        self.assertEqual(body['database'], 'OK')
+        self.assertEqual(body['system'], 'DEGRADED')
+
+    def test_rejects_non_get(self) -> None:
+        """Verify the probe is read-only."""
+        self.assertEqual(self.client.post('/health/').status_code, 405)
+
+
+class ApplicationLoggingTest(TestCase):
+    """Application loggers must reach a handler.
+
+    LOGGING previously declared only 'django' and 'project', while every module
+    calls getLogger(__name__) — yielding 'apps.*', 'config.*' and 'utils.*'.
+    Those records matched no logger and were discarded in silence.
+    """
+
+    def _resolved_handlers(self, name: str) -> list[logging.Handler]:
+        """Walk the logger hierarchy the way logging dispatches a record.
+
+        Args:
+            name (str): Dotted logger name.
+
+        Returns:
+            list[logging.Handler]: Every handler the record would reach.
+        """
+        handlers: list[logging.Handler] = []
+        current: logging.Logger | None = logging.getLogger(name)
+        while current:
+            handlers.extend(current.handlers)
+            current = current.parent if current.propagate else None
+        return handlers
+
+    def test_application_loggers_reach_a_handler(self) -> None:
+        """Verify no application logger resolves to an empty handler list."""
+        for name in ('apps.core.views', 'apps.core.validators', 'config.settings'):
+            with self.subTest(logger=name):
+                self.assertTrue(
+                    self._resolved_handlers(name),
+                    f'{name!r} resolves to no handler; its records are discarded',
+                )
+
+
+class AdminIntegrityCheckTest(TestCase):
+    """core.E001 must catch a field declared on the wrong model.
+
+    Django's own checks do not validate inline `fields`, so this class of
+    defect reaches production as a 500 on the change page.
+    """
+
+    def test_registered_admins_build_cleanly(self) -> None:
+        """Verify every registered admin form and inline formset constructs."""
+        self.assertEqual(check_admin_forms_are_constructible(), [])
+
+    def test_detects_a_field_that_does_not_exist(self) -> None:
+        """Verify a field naming no model attribute produces core.E001."""
+
+        class BrokenGroupAdmin(admin.ModelAdmin):
+            """Admin declaring a field the model does not have."""
+
+            fields = ('name', 'field_that_does_not_exist')
+
+        original = admin.site._registry[Group]  # noqa: SLF001
+        admin.site._registry[Group] = BrokenGroupAdmin(Group, admin.site)  # noqa: SLF001
+        try:
+            messages = check_admin_forms_are_constructible()
+        finally:
+            admin.site._registry[Group] = original  # noqa: SLF001
+
+        self.assertTrue(any(m.id == 'core.E001' for m in messages))

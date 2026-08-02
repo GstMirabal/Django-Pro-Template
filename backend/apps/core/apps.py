@@ -10,3 +10,7 @@ class CoreConfig(AppConfig):
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.core'
+
+    def ready(self) -> None:
+        """Import the custom system checks so their @register decorators run."""
+        import apps.core.checks  # noqa: F401, PLC0415

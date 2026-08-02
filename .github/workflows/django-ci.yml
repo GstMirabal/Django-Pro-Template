@@ -1,0 +1,223 @@
+name: Django CI (reusable)
+
+# Reusable workflow shared by every Django host derived from this template.
+# Call it instead of copying it — a copied pipeline drifts, and the drift is
+# invisible until the repositories behave differently under the same commit.
+#
+#   jobs:
+#     ci:
+#       uses: GstMirabal/Django-Pro-Template/.github/workflows/django-ci.yml@main
+#       with:
+#         project-name: my-project
+#
+# Two kinds of repository call this, and they need different pipelines. A
+# project owns its settings and boots: it gets Postgres, a generated
+# config.toml, system checks and a production boot simulation. A reusable app
+# owns none of that — no manage.py, no settings module, nothing to boot — so it
+# gets lint, suite and documentation gate only. They are separate jobs rather
+# than one job with toggles because a `services:` block cannot be switched off
+# by an input: Postgres would spin up for an app that never opens a socket.
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: >-
+          `project` for a bootable Django project, `app` for a reusable Django
+          application installed into a host.
+        type: string
+        default: project
+      python-version:
+        description: Python version used for every job.
+        type: string
+        default: "3.13"
+      project-name:
+        description: >-
+          Value for PROJECT_NAME, used by docker-compose and logs. Ignored in
+          `app` mode.
+        type: string
+        required: false
+        default: app
+      test-command:
+        description: Command that runs the suite, from the repository root.
+        type: string
+        default: pytest -q
+      run-docs-gate:
+        description: >-
+          Run the .agents documentation freshness gate. Requires the .agents
+          submodule to be present.
+        type: boolean
+        default: true
+      sprint-id:
+        description: Sprint number passed to the freshness gate.
+        type: string
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  app-lint-and-test:
+    name: Lint and tests (app)
+    if: inputs.mode == 'app'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      # An app carries its own minimal host settings for the suite, so there is
+      # no config.toml to generate and no manage.py to check.
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+      - name: Documentation freshness gate
+        if: inputs.run-docs-gate
+        run: python .agents/scripts/docs_freshness_check.py . ${{ inputs.sprint-id }}
+
+  lint-and-test:
+    name: Lint and tests
+    if: inputs.mode == 'project'
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ci_db
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DEBUG: "true"
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+      TRUST_PROXY_SSL_HEADER: "false"
+      CROSS_SITE_FRONTEND: "false"
+      LANGUAGE_CODE: "en-us"
+      TIME_ZONE: "UTC"
+      PROJECT_NAME: ${{ inputs.project-name }}
+      POSTGRES_DB: ci_db
+      POSTGRES_USER: ci_user
+      POSTGRES_PASSWORD: ci_password
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      PROJECT_LOGS_DIR: "logs"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Generate a throwaway DJANGO_SECRET_KEY for this run
+        run: |
+          echo "DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" >> "$GITHUB_ENV"
+
+      - name: Generate config.toml
+        run: cp config.toml.example config.toml
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Django system checks
+        working-directory: backend
+        run: python manage.py check --fail-level WARNING
+
+      # A model edited without its migration passes lint, passes the system
+      # checks and passes the suite, then fails on the first deploy that runs
+      # `migrate` against a real database.
+      - name: Missing migrations check
+        working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+      - name: Documentation freshness gate
+        if: inputs.run-docs-gate
+        run: python .agents/scripts/docs_freshness_check.py . ${{ inputs.sprint-id }}
+
+  deploy-check:
+    name: Production boot simulation
+    if: inputs.mode == 'project'
+    runs-on: ubuntu-latest
+
+    # Boots with DEBUG=false so the production-only branch actually executes.
+    # Source alone cannot show that those settings apply: they are computed at
+    # import time under a condition that never holds in the test environment.
+    env:
+      DEBUG: "false"
+      ALLOWED_HOSTS: "example.com"
+      CORS_ALLOWED_ORIGINS: "https://app.example.com"
+      TRUST_PROXY_SSL_HEADER: "false"
+      CROSS_SITE_FRONTEND: "false"
+      LANGUAGE_CODE: "en-us"
+      TIME_ZONE: "UTC"
+      PROJECT_NAME: ${{ inputs.project-name }}
+      POSTGRES_DB: ci_db
+      POSTGRES_USER: ci_user
+      POSTGRES_PASSWORD: ci_password
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      PROJECT_LOGS_DIR: "logs"
+      EMAIL_HOST: "smtp.example.com"
+      EMAIL_PORT: "587"
+      EMAIL_USE_TLS: "true"
+      EMAIL_HOST_USER: "ci@example.com"
+      EMAIL_HOST_PASSWORD: "ci-only-not-a-real-secret"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate a throwaway DJANGO_SECRET_KEY for this run
+        run: |
+          echo "DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" >> "$GITHUB_ENV"
+
+      - name: Generate config.toml
+        run: cp config.toml.example config.toml
+
+      - name: Simulate production boot (manage.py check --deploy)
+        working-directory: backend
+        run: python manage.py check --deploy --fail-level WARNING

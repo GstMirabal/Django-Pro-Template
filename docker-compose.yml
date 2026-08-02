@@ -17,6 +17,24 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Optional shared cache. Not needed by this template, which ships no app
+  # using the cache — the default per-process LocMemCache is adequate until
+  # one does. Start it (and set REDIS_URL) as soon as you install an app that
+  # relies on shared state: single-use tokens, rate limiting, step-up auth.
+  redis:
+    image: redis:7-alpine
+    container_name: "${PROJECT_NAME}_redis"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles: ["cache"]
+
   # Fully containerized Django, built from the repo's own Dockerfile. Not
   # needed for local development (the documented flow runs Django outside
   # Docker via `venv` against just the `db` service — `docker-compose up -d db`

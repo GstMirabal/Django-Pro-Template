@@ -8,7 +8,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 
 ## [Unreleased]
 
+### Fixed
+- **`.env` now loads for every entrypoint.** It was loaded only by `manage.py`, so WSGI (gunicorn), ASGI, pytest and any plain script booted with an empty environment and failed on `DJANGO_SECRET_KEY`. Docker hid this — container runtimes inject the variables directly — but a gunicorn deployment on a host with a `.env` file did not start. #001
+- **Optional boolean keys reach their default.** `config.toml.example` declares each as `KEY = "$KEY"`, so `envtoml` interpolates an unset variable to an empty string; the key is present and `dict.get(key, fallback)` never reaches its fallback. Following this project's own README aborted startup on `TRUST_PROXY_SSL_HEADER`. #001
+- **Application loggers reach a handler.** `LOGGING` declared only `django` and `project` while every module calls `getLogger(__name__)`, yielding `apps.*`, `config.*` and `utils.*` — verified at runtime to resolve to an empty handler list. #001
+- **`.gitignore` covers the real log directory.** The rule named `/backend/logs/` while the application creates `/logs/`. #001
+- Workflows declare `permissions: contents: read` instead of inheriting the repository default for `GITHUB_TOKEN` (CodeQL). #001
+
 ### Added
+- **`GET /health/`** — liveness and readiness probe reporting database and cache independently, `200` healthy and `503` degraded. Contract in `docs/contracts/CORE_CONTRACT.md`. #001
+- **`core.E001` admin-integrity system check** constructing every registered admin form and inline formset at startup. Django's own checks do not validate inline `fields`, so that class of defect otherwise reaches production as a 500. #001
+- **Explicit `CACHES`** with optional `REDIS_URL`, and a Redis service in `docker-compose.yml` under the `cache` profile. Deliberately not a hard failure when unset: this template ships no app that uses the cache. #001
+- **pytest harness** (`pytest.ini` + `config/settings_test.py`) running on an in-RAM SQLite database. The 13 existing `TestCase` classes run unmodified. #001
+- **Four retroactive ADRs** under `docs/decisions/` — strict boolean configuration, opt-in trust boundaries, container startup migrations, layered password policy. #001
+- **Reusable CI workflow** (`.github/workflows/django-ci.yml`) for the repositories derived from this template to call rather than copy. #001
+- `docs/audits/AUDIT_001_BACKEND.md`, `docs/roadmaps/GLOBAL_ROADMAP.md`, `docs/contracts/CORE_CONTRACT.md`, and the sprint log. #001
+
+### Changed
+- **Django 5.2.16 → 6.0.7**, across ten dependency bumps, with no application-code change. #001
+- `docs/active_state.json` is now tracked: `docs_freshness_check.py` reads it, and `start_workflow.md` treats its absence as an un-onboarded host, so ignoring it made every fresh clone re-run the onboarding scaffold. #001
+- Governance: `topology_map` as flat string paths and `current_sprint` carrying `last_audit_sprint`, which is what the freshness gate actually reads. #001
 - Session closeout (`/agents:close`): renamed `docs/DEPLOYMENT.md` to `docs/guides/CORE_DEPLOYMENT_GUIDE.md` (RA-06 Option B naming — how-to guides live at `docs/guides/[MODULE]_[TASK]_GUIDE.md`) and restructured it to the How-to template (Goal/Prerequisites/Steps/Verify/Troubleshooting); updated every cross-reference. Purged 3 empty scaffold directories (`docs/contracts/`, `docs/roadmaps/backend/core/`, `docs/sprints/backend/core/`) per RA-07. #000
 - Adopted Token-Optimized Agent Pipeline governance (v4.2.1) — onboarding scenario: C (mature project, no prior agentic traces). #000
 - CI (`.github/workflows/ci.yml`): lint, tests, and a `manage.py check --deploy` run booted with a simulated `DEBUG=false` on every push/PR. #000
@@ -38,6 +57,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · Versioning: [SemVer](
 - `docker-compose.yml`'s `db` service: unpinned `postgres:15` → pinned `postgres:15.10`, Postgres port published to all interfaces → `127.0.0.1` only, no healthcheck/restart policy → both added. #000
 - `.gitignore` missing entries that left `identity.config.json`, `.mcp.json`, and `.agent_state/` untracked but not ignored (a careless `git add -A` would have committed them — `identity.config.json` in particular is meant to hold real contact info). #000
 - CI (`lint-and-test` and `deploy-check`) failing on every push: the `CROSS_SITE_FRONTEND` opt-in strict-bool setting was never added to `ci.yml`'s env blocks when introduced, so it resolved to an empty string and `_parse_strict_bool` refused to boot Django. See `docs/hotfixes/H-001-CI.md`. #H-001-CI
+- `envtoml` 0.4.0 (Dependabot PR #6) broke Django boot entirely (`TypeError: File must be opened in binary mode`): `config.toml` was opened in text mode, incompatible with the new file-handling contract. Now opened in binary mode. See `docs/hotfixes/H-002-Backend.md`. #H-002-Backend
 
 ## [0.1.0] - 2026-07-27
 _Seed entry: state of the project at governance adoption (Scenario C — mature project, no agents)._

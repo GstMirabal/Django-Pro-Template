@@ -1,6 +1,6 @@
 {
   "last_update": "2026-07-29",
-  "sprint_id": "H-001-CI",
+  "sprint_id": "H-002-Backend",
   "_schema": "Entries are summary-only Knowledge Items. The 'file' field is omitted once the raw log has been purged (agents.md §4 definitive_amnesia) — the 1-line summary IS the retained knowledge.",
   "items": [
     {
@@ -14,6 +14,10 @@
     {
       "id": "F-20260729-CI01",
       "summary": "When introducing a new opt-in _parse_strict_bool-gated Django setting, it must be added to .github/workflows/ci.yml's env blocks (both lint-and-test and deploy-check) in the same commit — CROSS_SITE_FRONTEND was missed in dd8c9b3 despite TRUST_PROXY_SSL_HEADER (added in the same commit) getting it right, breaking CI on every push until hotfix H-001-CI. Host-class: check ci.yml env blocks whenever settings.py gains a new _parse_strict_bool() call."
+    },
+    {
+      "id": "F-20260729-CI02",
+      "summary": "A Dependabot bump of a config-loading library (envtoml, dj-database-url) can break Django boot entirely via an API-contract change invisible in that library's own changelog scope — envtoml 0.4.0 required binary-mode file handles, breaking settings.py's text-mode open() until hotfix H-002-Backend. Manually run manage.py check with the new pinned version before merging any such bump; a green CI isn't sufficient proof since CI can independently be red for an unrelated reason (as it was for H-001-CI at the same time)."
     }
   ]
 }

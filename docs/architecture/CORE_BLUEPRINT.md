@@ -2,9 +2,9 @@
 **File**: `docs/architecture/CORE_BLUEPRINT.md` (RA-06 Option B naming)
 **Status**: `RATIFIED`
 **Sprint of origin**: #000 (Legacy Onboarding — Full Reverse Engineering, Scenario C)
-**Last Audit Sprint**: #000 (Security Hardening + Containerized Deploy — Rounds 1-4)
-**Last Audit Date**: 2026-07-29
-**Last Audit Commit SHA**: 417667891e1b69bc971ac0b04ea1124c53e1f1a4
+**Last Audit Sprint**: #001
+**Last Audit Date**: 2026-07-31
+**Last Audit Commit SHA**: d6ad5df
 
 ---
 
@@ -39,14 +39,14 @@ Data model (summary only — key entities and relations, one line each; full sch
 2. The validator checks, via regex, for at least one uppercase letter, one lowercase letter, one digit, and one non-alphanumeric character (including `_`), raising `django.core.exceptions.ValidationError` with a specific `code` (`password_no_upper`, `password_no_lower`, `password_no_digit`, `password_no_symbol`) on the first rule it fails.
 
 ## 5. Crosscutting Concepts
-- **Fail-fast configuration**: the project-level `settings.py` raises `ImproperlyConfigured` at import time if required config (`DJANGO_SECRET_KEY`, DB components, production `ALLOWED_HOSTS`/`CORS_ALLOWED_ORIGINS`, production email settings) is missing, or if a security-relevant boolean (`DEBUG`, `EMAIL_USE_TLS`, `TRUST_PROXY_SSL_HEADER`, `CROSS_SITE_FRONTEND`) isn't exactly `"true"`/`"false"` (case-insensitive) — via the shared `_parse_strict_bool` helper. `apps.core` inherits this posture but does not itself implement config loading.
-- **Password hardening stack**: `core`'s validator is one layer in a five-validator chain (`AUTH_PASSWORD_VALIDATORS`) that also includes `pwned_passwords_django`, giving both structural (complexity) and breach-database (pwned) checks.
-- **Cross-origin session auth**: `CORS_ALLOWED_ORIGINS` doubles as `CSRF_TRUSTED_ORIGINS` and enables `CORS_ALLOW_CREDENTIALS`, so a decoupled frontend at those origins can authenticate by session cookie. For a frontend on a genuinely different registrable domain (not just a different port/subdomain), the opt-in `CROSS_SITE_FRONTEND` flag additionally sets `SESSION_COOKIE_SAMESITE`/`CSRF_COOKIE_SAMESITE` to `'None'` — browsers never send `SameSite=Lax` (the default) cookies on cross-site `fetch`/`XHR`.
+- **Fail-fast configuration**: `settings.py` raises `ImproperlyConfigured` at import time when required configuration is missing (`DJANGO_SECRET_KEY`, DB components, production `ALLOWED_HOSTS`/`CORS_ALLOWED_ORIGINS`, production email settings), and when any of `DEBUG`, `EMAIL_USE_TLS`, `TRUST_PROXY_SSL_HEADER` or `CROSS_SITE_FRONTEND` is not exactly `"true"`/`"false"`, case-insensitive, via `_parse_strict_bool`. `apps.core` inherits this posture and does not implement config loading. See [ADR-0001](../decisions/ADR-0001-strict-boolean-configuration.md).
+- **Password hardening stack**: `core`'s validator is the fourth of five entries in `AUTH_PASSWORD_VALIDATORS`; the fifth is `pwned_passwords_django`. See [ADR-0004](../decisions/ADR-0004-layered-password-policy.md).
+- **Cross-origin session auth**: `CORS_ALLOWED_ORIGINS` doubles as `CSRF_TRUSTED_ORIGINS` and enables `CORS_ALLOW_CREDENTIALS`. The opt-in `CROSS_SITE_FRONTEND` flag additionally sets `SESSION_COOKIE_SAMESITE` and `CSRF_COOKIE_SAMESITE` to `'None'`. See [ADR-0002](../decisions/ADR-0002-opt-in-trust-boundaries.md).
 - **Brute-force login protection**: `django-axes` locks out a `(username, ip_address)` pair for `AXES_COOLOFF_TIME` after `AXES_FAILURE_LIMIT` failed attempts (HTTP 429), resetting the count on a successful login (`AXES_RESET_ON_SUCCESS`). Covers `/admin/login/` and any future auth view via `AxesStandaloneBackend`.
 - **Response security headers**: `django-csp` (`CONTENT_SECURITY_POLICY`, 4.0+ dict format) and `django-permissions-policy` (`PERMISSIONS_POLICY`, list-of-origins-per-feature format) both apply only in the `if not DEBUG:` block — verified empirically not to break the Django admin UI (no inline `<script>`/`style=` in its rendered pages).
-- **Reverse-proxy TLS trust**: `SECURE_PROXY_SSL_HEADER` is opt-in only (`TRUST_PROXY_SSL_HEADER`), never enabled by default, since trusting `X-Forwarded-Proto` blindly lets a client spoof it when there's no proxy actually stripping that header.
+- **Reverse-proxy TLS trust**: `SECURE_PROXY_SSL_HEADER` is set only when `TRUST_PROXY_SSL_HEADER` is enabled. See [ADR-0002](../decisions/ADR-0002-opt-in-trust-boundaries.md).
 - **Static file serving**: `whitenoise` (`WhiteNoiseMiddleware`, directly after `SecurityMiddleware`; `STORAGES['staticfiles']` set to its compressed-manifest backend) serves collected static files directly from the app process — no separate proxy/CDN required for a generic deploy. See `docs/guides/CORE_DEPLOYMENT_GUIDE.md`.
-- **Container startup order**: `docker-entrypoint.sh` runs `migrate --noinput` then `collectstatic --noinput` on every container start (not at build time, since both need real env vars/DB connectivity that don't exist yet during `docker build`) before `exec`-ing into gunicorn — see `docs/guides/CORE_DEPLOYMENT_GUIDE.md` for the multi-replica caveat on automatic `migrate`.
+- **Container startup order**: `docker-entrypoint.sh` runs `migrate --noinput`, then `collectstatic --noinput`, then `exec`s into gunicorn. See [ADR-0003](../decisions/ADR-0003-container-startup-runs-migrations.md) for the multi-replica constraint, and `docs/guides/CORE_DEPLOYMENT_GUIDE.md` for the procedure.
 
 ## 6. Non-negotiable Constraints
 | Constraint | Verification |
@@ -57,7 +57,13 @@ Data model (summary only — key entities and relations, one line each; full sch
 | `django-axes` must lock out and must reset on success | `AxesLockoutTest` in `backend/apps/core/tests.py` exercises the real login flow, not just the setting values |
 
 ## 7. Decisions
-None recorded yet — no ADRs exist for this module as of this audit.
+
+This module's ADR log — link, don't restate:
+
+- [ADR-0001](../decisions/ADR-0001-strict-boolean-configuration.md): strict boolean parsing for the four security-relevant settings.
+- [ADR-0002](../decisions/ADR-0002-opt-in-trust-boundaries.md): proxy TLS trust and cross-site cookies stay opt-in.
+- [ADR-0003](../decisions/ADR-0003-container-startup-runs-migrations.md): migrations and static collection run at container start.
+- [ADR-0004](../decisions/ADR-0004-layered-password-policy.md): five-validator password chain, breach check last.
 
 ## 8. Glossary
 | Term | Meaning in this module |
