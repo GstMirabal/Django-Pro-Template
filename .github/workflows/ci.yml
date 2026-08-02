@@ -25,7 +25,7 @@ jobs:
       sprint-id: "2"
 
   integration:
-    name: django-users-app installs into this template
+    name: Django-Users-App installs into this template
     runs-on: ubuntu-latest
     # The claim this template makes is that a Django app can be installed into
     # it. Nothing else in either repository tests that claim: the app's own
@@ -39,10 +39,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check out django-users-app
+      - name: Check out Django-Users-App
         uses: actions/checkout@v7
         with:
-          repository: GstMirabal/django-users-app
+          repository: GstMirabal/Django-Users-App
           path: users-app
           submodules: recursive
 
