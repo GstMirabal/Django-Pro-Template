@@ -22,4 +22,134 @@ jobs:
     uses: ./.github/workflows/django-ci.yml
     with:
       project-name: django-pro-template-ci
-      sprint-id: "1"
+      sprint-id: "2"
+
+  integration:
+    name: django-users-app installs into this template
+    runs-on: ubuntu-latest
+    # The claim this template makes is that a Django app can be installed into
+    # it. Nothing else in either repository tests that claim: the app's own
+    # suite runs against a test harness, and a harness that is too helpful
+    # hides the requirements it exists to expose. Two blocking defects reached
+    # `main` that way — throttled endpoints returning 500 in any real host, and
+    # bearer clients getting 403 — and both were found by doing this by hand.
+    # Doing it by hand does not survive contact with a busy week.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out django-users-app
+        uses: actions/checkout@v4
+        with:
+          repository: GstMirabal/django-users-app
+          path: users-app
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install both dependency sets
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r users-app/requirements.txt
+
+      - name: Vendor the app
+        run: cp -R users-app/users backend/users
+
+      - name: Wire it into the project
+        run: |
+          python - <<'PY'
+          import pathlib, re
+
+          settings = pathlib.Path("backend/config/settings.py")
+          source = settings.read_text()
+          source = re.sub(r"(INSTALLED_APPS\s*=\s*\[)", r"\1\n    'users',", source, count=1)
+          source = "import secrets\nfrom cryptography.fernet import Fernet\n" + source
+          source += """
+
+          AUTH_USER_MODEL = 'users.User'
+          MASTER_KEY = Fernet.generate_key().decode()
+          ENCRYPTION_PEPPER = secrets.token_hex(32)
+
+          # Deliberately NOT declaring DEFAULT_THROTTLE_RATES['sensitive']. The
+          # app must supply its own rate; when it did not, every throttled
+          # endpoint returned 500 here while its own suite stayed green.
+          REST_FRAMEWORK = {
+              'DEFAULT_AUTHENTICATION_CLASSES': (
+                  'rest_framework.authentication.SessionAuthentication',
+                  'rest_framework_simplejwt.authentication.JWTAuthentication',
+              ),
+              'DEFAULT_PERMISSION_CLASSES': (
+                  'rest_framework.permissions.IsAuthenticated',
+              ),
+          }
+          """
+          settings.write_text(source)
+
+          urls = pathlib.Path("backend/config/urls.py")
+          routes = urls.read_text()
+          routes = routes.replace(
+              "from django.urls import path", "from django.urls import include, path"
+          )
+          routes = routes.replace(
+              "urlpatterns = [",
+              "urlpatterns = [\n    path('api/v1/users/', include('users.urls')),",
+              1,
+          )
+          urls.write_text(routes)
+          PY
+
+      - name: Connect verification-code delivery
+        run: |
+          cat >> backend/apps/core/apps.py <<'PY'
+
+              def ready(self) -> None:
+                  """Wire delivery, which the users app announces and never performs."""
+                  from django.core.mail import send_mail
+                  from django.dispatch import receiver
+
+                  from users.events import verification_code_issued
+
+                  @receiver(verification_code_issued, weak=False)
+                  def _deliver(sender, user, code, expires_at, **kwargs):
+                      send_mail(
+                          subject='Verify your account',
+                          message=f'Your code is {code}.',
+                          from_email=None,
+                          recipient_list=[user.email],
+                          fail_silently=True,
+                      )
+          PY
+
+      - name: Generate config.toml
+        run: cp config.toml.example config.toml
+
+      - name: System checks with the app installed
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: ci-integration-secret-key-not-used-in-production
+          DEBUG: "true"
+          POSTGRES_DB: d
+          POSTGRES_USER: u
+          POSTGRES_PASSWORD: p
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          PROJECT_LOGS_DIR: /tmp/logs
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+
+      - name: Run both suites together
+        env:
+          DJANGO_SECRET_KEY: ci-integration-secret-key-not-used-in-production
+          DEBUG: "true"
+          POSTGRES_DB: d
+          POSTGRES_USER: u
+          POSTGRES_PASSWORD: p
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          PROJECT_LOGS_DIR: /tmp/logs
+        run: pytest -q
