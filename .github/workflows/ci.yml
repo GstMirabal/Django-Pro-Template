@@ -54,7 +54,7 @@ jobs:
       - name: Install both dependency sets
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
-          pip install -r users-app/requirements.txt
+          pip install -r users-app/requirements.txt -r users-app/requirements-dev.txt
 
       - name: Vendor the app
         run: cp -R users-app/users backend/users
