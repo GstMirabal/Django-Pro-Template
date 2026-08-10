@@ -16,7 +16,7 @@ h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.18
-packaging==26.2
+packaging==26.3
 psycopg2-binary==2.9.12
 pwned-passwords-django==5.2.0
 pycparser==3.0
